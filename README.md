@@ -10,5 +10,5 @@ A simple Python script to download YouTube videos using `yt-dlp`.
 ## Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/youtube-downloader.git
+   git clone https://github.com/yeir4444/youtube-downloader.git
    cd youtube-downloader
