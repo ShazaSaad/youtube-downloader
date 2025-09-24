@@ -22,7 +22,7 @@ A simple yet powerful Python-based **YouTube Video Downloader** that fetches and
 ### **Installation & Usage**
 #### **1. Clone the Repository**
 ```bash
-git clone https://github.com/your-username/youtube-downloader.git
+git clone https://github.com/ShazaSaad/youtube-downloader.git
 cd youtube-downloader
 ```
 
