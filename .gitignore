@@ -1,5 +1,9 @@
-venv/
+
 __pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
 downloads/
-*.mp4
-*.webm
+frontend/node_modules/
+frontend/dist/

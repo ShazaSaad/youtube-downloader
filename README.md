@@ -1,61 +1,73 @@
 
 ## **YouTube Video Downloader**
-A simple yet powerful Python-based **YouTube Video Downloader** that fetches and saves videos in the best available quality using `yt-dlp`. This tool merges video and audio seamlessly and ensures fast, reliable downloads.
+A Python + React YouTube downloader with a modern UI and optional dark mode. It fetches and saves videos in the best available quality using `yt-dlp` and merges streams with `ffmpeg`.
 
 ### **Features**
-✅ **Download videos in the best quality** (auto-selects highest resolution)  
+✅ **Modern React interface** inspired by YouTube styling  
+✅ **Light + Dark mode toggle** (default: light)  
+✅ **Background download jobs with progress logs**  
+✅ **Download videos in the best quality** (`bestvideo+bestaudio/best`)    
 ✅ **Merges video & audio automatically** (requires `ffmpeg`)  
 ✅ **Saves videos to a dedicated folder** (`downloads/`)  
-✅ **Lightweight & Easy to Use**  
-✅ **Fully open-source and customizable**  
+  
 
 ---
 
-### **How It Works**
-1. **Input a YouTube Video URL**
-2. **Selects the best video & audio format**
-3. **Downloads and merges files (using `ffmpeg`)**
-4. **Saves the video to the `downloads/` folder**
+### **Project Structure**
+- `src/ytdownload.py` → reusable download logic
+- `src/api.py` → Flask API for UI integration
+- `src/main.py` → CLI fallback entry point
+- `frontend/` → React (Vite) user interface
 
 ---
 
-### **Installation & Usage**
-#### **1. Clone the Repository**
-```bash
-git clone https://github.com/ShazaSaad/youtube-downloader.git
-cd youtube-downloader
-```
-
-#### **2. Install Dependencies**
+### **Backend Setup (Flask + yt-dlp)**
+#### 1) Install Python dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-#### **3. Run the Downloader**
+#### 2) Run backend API
+```bash
+python src/api.py
+```
+Backend runs on `http://localhost:5000`.
+
+---
+
+### **Frontend Setup (React + Vite)**
+#### 1) Install frontend dependencies
+```bash
+cd frontend
+npm install
+```
+
+#### 2) Run frontend
+```bash
+npm run dev
+```
+Frontend runs on `http://localhost:5173` and proxies API calls to Flask.
+
+---
+
+### **CLI Usage (Optional)**
+If you prefer the terminal flow:
 ```bash
 python src/main.py
 ```
-> **Note:** Ensure `ffmpeg` is installed and added to your system PATH.
 
 ---
 
 ### **Requirements**
 - Python 3.x
-- `yt-dlp` (installed via `pip`)
+- Node.js 18+
+- `yt-dlp`
+- `flask`
+- `flask-cors`
 - `ffmpeg` (for merging video & audio)
 
 ---
 
-### **Example**
-```
-Enter the video URL: https://youtu.be/example-video
-Downloading: Example Video Title...
-Download completed successfully!
-```
-
----
-
 ### **License**
-This project is licensed under the **MIT License**, meaning you can freely use, modify, and distribute it.
-
+This project is licensed under the **MIT License**.
 ---
