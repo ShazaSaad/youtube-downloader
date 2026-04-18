@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 const POLL_MS = 1500;
 
@@ -7,9 +7,10 @@ function formatDuration(totalSeconds) {
     return 'Unknown';
   }
 
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  const wholeSeconds = Math.floor(totalSeconds);
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const seconds = wholeSeconds % 60;
 
   if (hours > 0) {
     return [hours, minutes, seconds]
@@ -37,6 +38,7 @@ function App() {
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState('');
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const previewRequestRef = useRef(null);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -77,7 +79,21 @@ function App() {
     setJob(null);
     setJobId(null);
     setError('');
+    setIsPreviewLoading(false);
+    if (previewRequestRef.current) {
+      previewRequestRef.current.abort();
+      previewRequestRef.current = null;
+    }
   }, [url]);
+
+  useEffect(
+    () => () => {
+      if (previewRequestRef.current) {
+        previewRequestRef.current.abort();
+      }
+    },
+    [],
+  );
 
   const canSubmit = useMemo(
     () =>
@@ -89,6 +105,12 @@ function App() {
   );
 
   const handlePreview = async () => {
+    if (previewRequestRef.current) {
+      previewRequestRef.current.abort();
+    }
+    const controller = new AbortController();
+    previewRequestRef.current = controller;
+
     setError('');
     setPreviewError('');
     setPreview(null);
@@ -101,6 +123,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
+        signal: controller.signal,
       });
       const payload = await response.json();
 
@@ -110,9 +133,15 @@ function App() {
 
       setPreview(payload);
     } catch (previewFetchError) {
+      if (previewFetchError.name === 'AbortError') {
+        return;
+      }
       setPreviewError(previewFetchError.message);
     } finally {
-      setIsPreviewLoading(false);
+      if (previewRequestRef.current === controller) {
+        previewRequestRef.current = null;
+        setIsPreviewLoading(false);
+      }
     }
   };
 
