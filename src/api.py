@@ -5,7 +5,7 @@ from uuid import uuid4
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from ytdownload import download_video
+from ytdownload import download_video, get_video_preview
 
 app = Flask(__name__)
 CORS(app)
@@ -49,6 +49,21 @@ def _run_download(job_id: str, url: str):
 @app.get("/api/health")
 def health_check():
     return jsonify({"status": "ok"})
+
+
+@app.post("/api/preview")
+def preview_video():
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()
+
+    if not url:
+        return jsonify({"error": "The 'url' field is required."}), 400
+
+    try:
+        preview = get_video_preview(url)
+        return jsonify(preview)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 400
 
 
 @app.post("/api/download")

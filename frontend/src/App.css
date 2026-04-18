@@ -125,10 +125,81 @@ h1 {
   cursor: wait;
 }
 
+.form-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.secondary-button {
+  background: transparent !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.secondary-button:hover:enabled {
+  background: var(--log-bg) !important;
+}
+
+.preview-panel,
 .status-panel {
   margin-top: 24px;
   border-top: 1px solid var(--border);
   padding-top: 18px;
+}
+
+.preview-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.preview-media {
+  min-width: 0;
+}
+
+.preview-thumbnail {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  display: block;
+  background: var(--log-bg);
+}
+
+.preview-thumbnail-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+.preview-details h2 {
+  margin: 6px 0 8px;
+  font-size: clamp(1.1rem, 2vw, 1.5rem);
+}
+
+.preview-label {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.preview-channel {
+  margin: 0;
+  color: var(--muted);
+}
+
+.preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 14px;
+  color: var(--text);
+  font-weight: 600;
 }
 
 .success-box,
@@ -156,4 +227,11 @@ h1 {
   overflow: auto;
   padding: 14px;
   white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+  .form-actions,
+  .preview-panel {
+    grid-template-columns: 1fr;
+  }
 }

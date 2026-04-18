@@ -1,11 +1,36 @@
-import yt_dlp
-import os
 from pathlib import Path
 from typing import Callable, Optional
 
 import yt_dlp
 
 ProgressCallback = Optional[Callable[[str], None]]
+
+
+def get_video_preview(url: str):
+    if not url or not url.strip():
+        raise ValueError("A valid YouTube URL is required.")
+
+    ydl_opts = {
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+    }
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        return {
+            "title": info.get("title", "Unknown title"),
+            "channel": info.get("uploader") or info.get("channel") or "Unknown channel",
+            "duration": info.get("duration"),
+            "view_count": info.get("view_count"),
+            "thumbnail": info.get("thumbnail"),
+            "webpage_url": info.get("webpage_url") or url.strip(),
+        }
+    except Exception as exc:
+        raise RuntimeError(f"Preview failed: {exc}") from exc
 
 def download_video(url: str, output_path: str = "downloads", progress_callback: ProgressCallback = None):
     if not url or not url.strip():

@@ -2,12 +2,41 @@ import { useEffect, useMemo, useState } from 'react';
 
 const POLL_MS = 1500;
 
+function formatDuration(totalSeconds) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+    return 'Unknown';
+  }
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return [hours, minutes, seconds]
+      .map((value, index) => (index === 0 ? String(value) : String(value).padStart(2, '0')))
+      .join(':');
+  }
+
+  return [minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
+}
+
+function formatViews(viewCount) {
+  if (!Number.isFinite(viewCount) || viewCount < 0) {
+    return 'Unknown';
+  }
+
+  return new Intl.NumberFormat().format(viewCount);
+}
+
 function App() {
   const [url, setUrl] = useState('');
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
   const [error, setError] = useState('');
   const [theme, setTheme] = useState('light');
+  const [preview, setPreview] = useState(null);
+  const [previewError, setPreviewError] = useState('');
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -42,10 +71,50 @@ function App() {
     return () => clearInterval(interval);
   }, [jobId]);
 
+  useEffect(() => {
+    setPreview(null);
+    setPreviewError('');
+    setJob(null);
+    setJobId(null);
+    setError('');
+  }, [url]);
+
   const canSubmit = useMemo(
-    () => Boolean(url.trim()) && (!job || !['queued', 'running'].includes(job.status)),
-    [url, job],
+    () =>
+      Boolean(url.trim()) &&
+      Boolean(preview) &&
+      !isPreviewLoading &&
+      (!job || !['queued', 'running'].includes(job.status)),
+    [url, preview, isPreviewLoading, job],
   );
+
+  const handlePreview = async () => {
+    setError('');
+    setPreviewError('');
+    setPreview(null);
+    setJob(null);
+    setJobId(null);
+    setIsPreviewLoading(true);
+
+    try {
+      const response = await fetch('/api/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || 'Unable to load video preview.');
+      }
+
+      setPreview(payload);
+    } catch (previewFetchError) {
+      setPreviewError(previewFetchError.message);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -85,7 +154,7 @@ function App() {
         </div>
 
         <p className="subtitle">
-          Paste a YouTube URL and download the best available quality with a modern, one-click workflow.
+          Paste a YouTube URL, preview the video details, then download the best available quality.
         </p>
 
         <form onSubmit={handleSubmit} className="download-form">
@@ -98,10 +167,43 @@ function App() {
             placeholder="https://www.youtube.com/watch?v=..."
             required
           />
-          <button type="submit" disabled={!canSubmit}>
-            {job?.status === 'running' || job?.status === 'queued' ? 'Downloading...' : 'Start Download'}
-          </button>
+          <div className="form-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={handlePreview}
+              disabled={!url.trim() || isPreviewLoading || job?.status === 'running' || job?.status === 'queued'}
+            >
+              {isPreviewLoading ? 'Loading Preview...' : 'Preview Video'}
+            </button>
+            <button type="submit" disabled={!canSubmit}>
+              {job?.status === 'running' || job?.status === 'queued' ? 'Downloading...' : 'Start Download'}
+            </button>
+          </div>
         </form>
+
+        {previewError ? <div className="error-box">{previewError}</div> : null}
+
+        {preview ? (
+          <section className="preview-panel">
+            <div className="preview-media">
+              {preview.thumbnail ? (
+                <img className="preview-thumbnail" src={preview.thumbnail} alt={preview.title} />
+              ) : (
+                <div className="preview-thumbnail preview-thumbnail-placeholder">No thumbnail</div>
+              )}
+            </div>
+            <div className="preview-details">
+              <span className="preview-label">Video Preview</span>
+              <h2>{preview.title}</h2>
+              <p className="preview-channel">{preview.channel}</p>
+              <div className="preview-meta">
+                <span>Duration: {formatDuration(preview.duration)}</span>
+                <span>Views: {formatViews(preview.view_count)}</span>
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {error ? <div className="error-box">{error}</div> : null}
 
@@ -121,7 +223,7 @@ function App() {
             {job.error ? <div className="error-box">{job.error}</div> : null}
 
             <h3>Activity</h3>
-            <pre className="log-box">{(job.logs && job.logs.length ? job.logs.join('\n') : 'Waiting for activity...')}</pre>
+            <pre className="log-box">{job.logs && job.logs.length ? job.logs.join('\n') : 'Waiting for activity...'}</pre>
           </section>
         ) : null}
       </section>
