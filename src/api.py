@@ -27,7 +27,17 @@ def _append_log(job_id: str, message: str):
         job["updated_at"] = _now_iso()
 
 
-def _run_download(job_id: str, url: str, quality: str):
+def _run_download(
+    job_id: str,
+    url: str,
+    quality: str,
+    output_path: str,
+    playlist_mode: bool,
+    playlist_items,
+    download_subtitles: bool,
+    subtitle_languages,
+    save_thumbnail_only: bool,
+):
     with jobs_lock:
         jobs[job_id]["status"] = "running"
         jobs[job_id]["updated_at"] = _now_iso()
@@ -35,8 +45,14 @@ def _run_download(job_id: str, url: str, quality: str):
     try:
         result = download_video(
             url,
+            output_path=output_path,
             progress_callback=lambda msg: _append_log(job_id, msg),
             quality=quality,
+            playlist_mode=playlist_mode,
+            playlist_items=playlist_items,
+            download_subtitles=download_subtitles,
+            subtitle_languages=subtitle_languages,
+            save_thumbnail_only=save_thumbnail_only,
         )
         with jobs_lock:
             jobs[job_id]["status"] = "success"
@@ -59,12 +75,13 @@ def health_check():
 def preview_video():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
+    playlist_mode = bool(data.get("playlist_mode"))
 
     if not url:
         return jsonify({"error": "The 'url' field is required."}), 400
 
     try:
-        preview = get_video_preview(url)
+        preview = get_video_preview(url, playlist_mode=playlist_mode)
         return jsonify(preview)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 400
@@ -75,18 +92,32 @@ def create_download_job():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
     quality = (data.get("quality") or DEFAULT_QUALITY).strip()
+    output_path = (data.get("output_path") or "downloads").strip()
+    playlist_mode = bool(data.get("playlist_mode"))
+    playlist_items = data.get("playlist_items") or []
+    download_subtitles = bool(data.get("download_subtitles"))
+    subtitle_languages = data.get("subtitle_languages") or ["en"]
+    save_thumbnail_only = bool(data.get("save_thumbnail_only"))
 
     if not url:
         return jsonify({"error": "The 'url' field is required."}), 400
 
     if quality not in FORMAT_PRESETS:
         return jsonify({"error": "Invalid quality preset."}), 400
+    if not output_path:
+        return jsonify({"error": "Output path is required."}), 400
 
     job_id = str(uuid4())
     new_job = {
         "job_id": job_id,
         "url": url,
         "quality": quality,
+        "output_path": output_path,
+        "playlist_mode": playlist_mode,
+        "playlist_items": playlist_items,
+        "download_subtitles": download_subtitles,
+        "subtitle_languages": subtitle_languages,
+        "save_thumbnail_only": save_thumbnail_only,
         "status": "queued",
         "logs": [],
         "result": None,
@@ -98,7 +129,21 @@ def create_download_job():
     with jobs_lock:
         jobs[job_id] = new_job
 
-    Thread(target=_run_download, args=(job_id, url, quality), daemon=True).start()
+    Thread(
+        target=_run_download,
+        args=(
+            job_id,
+            url,
+            quality,
+            output_path,
+            playlist_mode,
+            playlist_items,
+            download_subtitles,
+            subtitle_languages,
+            save_thumbnail_only,
+        ),
+        daemon=True,
+    ).start()
 
     return jsonify({"job_id": job_id, "status": "queued"}), 202
 

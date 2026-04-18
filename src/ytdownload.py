@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import yt_dlp
 
@@ -38,12 +38,21 @@ FORMAT_PRESETS: Dict[str, Dict[str, Any]] = {
 DEFAULT_QUALITY = "best_mp4"
 
 
-def get_video_preview(url: str):
+def _parse_playlist_items(playlist_items: Optional[List[int]]) -> Optional[str]:
+    if not playlist_items:
+        return None
+    valid_items = sorted({item for item in playlist_items if isinstance(item, int) and item > 0})
+    if not valid_items:
+        return None
+    return ",".join(str(item) for item in valid_items)
+
+
+def get_video_preview(url: str, playlist_mode: bool = False):
     if not url or not url.strip():
         raise ValueError("A valid YouTube URL is required.")
 
     ydl_opts = {
-        "noplaylist": True,
+        "noplaylist": not playlist_mode,
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
@@ -53,7 +62,7 @@ def get_video_preview(url: str):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        return {
+        payload = {
             "title": info.get("title", "Unknown title"),
             "channel": info.get("uploader") or info.get("channel") or "Unknown channel",
             "duration": info.get("duration"),
@@ -61,6 +70,25 @@ def get_video_preview(url: str):
             "thumbnail": info.get("thumbnail"),
             "webpage_url": info.get("webpage_url") or url.strip(),
         }
+        if playlist_mode and info.get("_type") == "playlist":
+            entries = [entry for entry in (info.get("entries") or []) if entry]
+            payload["playlist"] = {
+                "title": info.get("title", "Playlist"),
+                "count": len(entries),
+                "entries": [
+                    {
+                        "index": idx + 1,
+                        "id": entry.get("id"),
+                        "title": entry.get("title", f"Video {idx + 1}"),
+                        "thumbnail": entry.get("thumbnail"),
+                        "duration": entry.get("duration"),
+                        "channel": entry.get("uploader") or entry.get("channel"),
+                        "url": entry.get("webpage_url"),
+                    }
+                    for idx, entry in enumerate(entries[:25])
+                ],
+            }
+        return payload
     except Exception as exc:
         raise RuntimeError(f"Preview failed: {exc}") from exc
 
@@ -69,6 +97,11 @@ def download_video(
     output_path: str = "downloads",
     progress_callback: ProgressCallback = None,
     quality: str = DEFAULT_QUALITY,
+    playlist_mode: bool = False,
+    playlist_items: Optional[List[int]] = None,
+    download_subtitles: bool = False,
+    subtitle_languages: Optional[List[str]] = None,
+    save_thumbnail_only: bool = False,
 ):
     if not url or not url.strip():
         raise ValueError("A valid YouTube URL is required.")
@@ -101,9 +134,20 @@ def download_video(
         "outtmpl": str(output_dir / "%(title)s.%(ext)s"),
         "ffmpeg_location": r"ffmpeg",
         "progress_hooks": [progress_hook],
-        "noplaylist": True,
+        "noplaylist": not playlist_mode,
         **preset,
     }
+    if save_thumbnail_only:
+        ydl_opts["skip_download"] = True
+        ydl_opts["writethumbnail"] = True
+    elif download_subtitles:
+        ydl_opts["writesubtitles"] = True
+        ydl_opts["writeautomaticsub"] = True
+        ydl_opts["subtitleslangs"] = subtitle_languages or ["en"]
+
+    playlist_items_spec = _parse_playlist_items(playlist_items)
+    if playlist_items_spec:
+        ydl_opts["playlist_items"] = playlist_items_spec
 
     emit("Starting download...")
 
@@ -119,9 +163,14 @@ def download_video(
                     file_path = candidate
 
         emit("Download completed successfully!")
-        return {
+        result = {
             "title": info.get("title", "Unknown title"),
             "file_path": str(Path(file_path).resolve()),
         }
+        if playlist_mode and info.get("_type") == "playlist":
+            entries = [entry for entry in (info.get("entries") or []) if entry]
+            result["playlist_count"] = len(entries)
+            result["playlist_title"] = info.get("title", "Playlist")
+        return result
     except Exception as exc:
         raise RuntimeError(f"Download failed: {exc}") from exc
