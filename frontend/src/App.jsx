@@ -3,8 +3,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const POLL_MS = 1500;
 const PREVIEW_DEBOUNCE_MS = 280;
 const TOAST_MS = 2200;
-const MAX_HISTORY_ITEMS = 25;
-const HISTORY_STORAGE_KEY = 'download_history_v2';
 const OUTPUT_PATH_KEY = 'download_output_path_v1';
 const CLIPBOARD_MONITOR_KEY = 'clipboard_monitor_enabled_v1';
 
@@ -83,9 +81,10 @@ function App() {
   const [previewError, setPreviewError] = useState('');
   const [toast, setToast] = useState('');
   const [queue, setQueue] = useState([]);
-  const [history, setHistory] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(true);
+  const [history, setHistory] = useState([]);
   const [error, setError] = useState('');
+  const [ytDlpVersion, setYtDlpVersion] = useState("unknown");
 
   const previewAbortRef = useRef(null);
   const previewDebounceRef = useRef(null);
@@ -97,9 +96,39 @@ function App() {
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') setTheme('dark');
-    setHistory(safeRead(HISTORY_STORAGE_KEY, []));
     setOutputPath(safeRead(OUTPUT_PATH_KEY, ''));
     setClipboardMonitor(Boolean(safeRead(CLIPBOARD_MONITOR_KEY, false)));
+  }, []);
+  useEffect(() => {
+    const loadServerInfo = async () => {
+      try {
+        const [jobsResponse, healthResponse] = await Promise.all([fetch('/api/jobs?limit=100'), fetch('/api/health')]);
+
+        if (jobsResponse.ok) {
+          const jobsPayload = await jobsResponse.json();
+          const successful = (jobsPayload.jobs || []).filter((job) => job.status === 'success' && job.result?.file_path);
+          setHistory(
+            successful.map((job) => ({
+              id: job.job_id,
+              title: job.result?.title || job.url,
+              thumbnail: null,
+              format: FORMAT_OPTIONS.find((x) => x.value === job.quality)?.label || job.quality,
+              savedAt: job.updated_at,
+              filePath: job.result.file_path,
+            })),
+          );
+        }
+
+        if (healthResponse.ok) {
+          const healthPayload = await healthResponse.json();
+          setYtDlpVersion(healthPayload?.yt_dlp?.version || 'unknown');
+        }
+      } catch {
+        // ignore startup fetch errors
+      }
+    };
+
+    loadServerInfo();
   }, []);
 
   useEffect(() => {
@@ -108,11 +137,9 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
-  }, [history]);
-  useEffect(() => {
     localStorage.setItem(OUTPUT_PATH_KEY, JSON.stringify(outputPath));
   }, [outputPath]);
+
   useEffect(() => {
     localStorage.setItem(CLIPBOARD_MONITOR_KEY, JSON.stringify(clipboardMonitor));
   }, [clipboardMonitor]);
@@ -241,19 +268,17 @@ function App() {
   useEffect(() => {
     queue.forEach((item) => {
       if (item.status !== 'success' || !item.result?.file_path || item.recorded) return;
-      setHistory((prev) =>
-        [
-          {
-            id: uid(),
-            title: item.result.title || item.url,
-            thumbnail: item.thumbnail || null,
-            format: FORMAT_OPTIONS.find((x) => x.value === item.quality)?.label || item.quality,
-            savedAt: new Date().toISOString(),
-            filePath: item.result.file_path,
-          },
-          ...prev,
-        ].slice(0, MAX_HISTORY_ITEMS),
-      );
+      setHistory((prev) => [
+        {
+          id: item.jobId,
+          title: item.result.title || item.url,
+          thumbnail: item.thumbnail || null,
+          format: FORMAT_OPTIONS.find((x) => x.value === item.quality)?.label || item.quality,
+          savedAt: new Date().toISOString(),
+          filePath: item.result.file_path,
+        },
+        ...prev,
+      ]);
       setQueue((prev) => prev.map((x) => (x.localId === item.localId ? { ...x, recorded: true } : x)));
     });
   }, [queue]);
@@ -368,7 +393,7 @@ function App() {
             ) : null}
           </div>
         </div>
-        <p className="subtitle">Automatic preview, playlist support, multi-job queue, and creator-friendly download options.</p>
+        <p className="subtitle">Automatic preview, persistent history, smart queue limits, and creator-friendly download options.</p>
 
         <form className="download-form" onSubmit={enqueueDownloads}>
           <label htmlFor="video-url">YouTube URL (single or multiple, separated by spaces/new lines)</label>
@@ -520,6 +545,9 @@ function App() {
             </div>
           ) : null}
         </section>
+        <footer className="footer-row">
+          <span className="version-badge">yt-dlp {ytDlpVersion}</span>
+        </footer>
       </section>
 
       {toast ? <div className="toast">{toast}</div> : null}
