@@ -112,6 +112,28 @@ def _init_db():
                     updated_at TEXT NOT NULL
                 )
             """)
+            existing_columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()
+            }
+            required_columns = {
+                "user_id": "TEXT",
+                "quality": "TEXT NOT NULL DEFAULT 'best'",
+                "output_path": "TEXT NOT NULL DEFAULT ''",
+                "playlist_mode": "INTEGER NOT NULL DEFAULT 0",
+                "playlist_items": "TEXT NOT NULL DEFAULT '[]'",
+                "download_subtitles": "INTEGER NOT NULL DEFAULT 0",
+                "subtitle_languages": "TEXT NOT NULL DEFAULT '[\"en\"]'",
+                "save_thumbnail_only": "INTEGER NOT NULL DEFAULT 0",
+                "logs": "TEXT NOT NULL DEFAULT '[]'",
+                "result": "TEXT",
+                "error": "TEXT",
+                "created_at": "TEXT NOT NULL DEFAULT ''",
+                "updated_at": "TEXT NOT NULL DEFAULT ''",
+            }
+            for column, column_type in required_columns.items():
+                if column not in existing_columns:
+                    conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} {column_type}")
+                    
             conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_updated_at ON jobs(updated_at DESC)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_user_id ON jobs(user_id)")
 
