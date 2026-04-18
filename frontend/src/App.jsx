@@ -70,7 +70,7 @@ function App() {
   const [theme, setTheme] = useState('light');
   const [inputText, setInputText] = useState('');
   const [formatQuality, setFormatQuality] = useState('best_mp4');
-  const [outputPath, setOutputPath] = useState('downloads');
+  const [outputPath, setOutputPath] = useState('');
   const [playlistMode, setPlaylistMode] = useState(false);
   const [downloadSubtitles, setDownloadSubtitles] = useState(false);
   const [subtitleLangs, setSubtitleLangs] = useState('en');
@@ -98,7 +98,7 @@ function App() {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') setTheme('dark');
     setHistory(safeRead(HISTORY_STORAGE_KEY, []));
-    setOutputPath(safeRead(OUTPUT_PATH_KEY, 'downloads'));
+    setOutputPath(safeRead(OUTPUT_PATH_KEY, ''));
     setClipboardMonitor(Boolean(safeRead(CLIPBOARD_MONITOR_KEY, false)));
   }, []);
 
@@ -273,6 +273,7 @@ function App() {
 
     const created = await Promise.all(
       urls.map(async (url, idx) => {
+        const normalizedOutputPath = outputPath.trim() || '~/Downloads';
         const body = {
           url,
           quality: formatQuality,
@@ -301,7 +302,7 @@ function App() {
           url,
           status: payload.status,
           quality: formatQuality,
-          outputPath,
+          outputPath: normalizedOutputPath,
           logs: [],
           progress: 0,
           speed: 'Waiting...',
@@ -393,7 +394,13 @@ function App() {
             </div>
             <div>
               <label htmlFor="output-path">Output folder</label>
-              <input id="output-path" type="text" value={outputPath} onChange={(event) => setOutputPath(event.target.value)} />
+              <input
+                id="output-path"
+                type="text"
+                value={outputPath}
+                onChange={(event) => setOutputPath(event.target.value)}
+                placeholder="Leave empty to use your Downloads folder"
+              />
             </div>
           </div>
 

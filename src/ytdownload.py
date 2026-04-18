@@ -36,6 +36,7 @@ FORMAT_PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 DEFAULT_QUALITY = "best_mp4"
+DEFAULT_OUTPUT_DIR = Path.home() / "Downloads"
 
 
 def _parse_playlist_items(playlist_items: Optional[List[int]]) -> Optional[str]:
@@ -94,7 +95,7 @@ def get_video_preview(url: str, playlist_mode: bool = False):
 
 def download_video(
     url: str,
-    output_path: str = "downloads",
+    output_path: str = "",
     progress_callback: ProgressCallback = None,
     quality: str = DEFAULT_QUALITY,
     playlist_mode: bool = False,
@@ -110,7 +111,7 @@ def download_video(
     if preset is None:
         raise ValueError(f"Unknown quality preset: {quality!r}")
 
-    output_dir = Path(output_path)
+    output_dir = Path(output_path).expanduser() if output_path and output_path.strip() else DEFAULT_OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
     def emit(message: str):
