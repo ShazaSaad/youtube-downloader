@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import LoginPage from './LoginPage';
 
 const POLL_MS = 1500;
 const PREVIEW_DEBOUNCE_MS = 280;
@@ -8,10 +9,10 @@ const CLIPBOARD_MONITOR_KEY = 'clipboard_monitor_enabled_v1';
 
 const FORMAT_OPTIONS = [
   { value: 'best_mp4', label: 'Best Quality (MP4)' },
-  { value: '1080', label: '1080p' },
-  { value: '720', label: '720p' },
-  { value: '480', label: '480p' },
-  { value: 'audio_mp3', label: 'Audio Only (MP3)' },
+  { value: '1080',     label: '1080p' },
+  { value: '720',      label: '720p' },
+  { value: '480',      label: '480p' },
+  { value: 'audio_mp3',label: 'Audio Only (MP3)' },
 ];
 
 const YOUTUBE_URL_RE =
@@ -22,29 +23,27 @@ const DOWNLOAD_PROGRESS_RE =
 
 const uid = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-// Format raw seconds (number) into a human-readable "H:MM:SS" / "M:SS" string.
 function formatDuration(seconds) {
   if (seconds == null || !Number.isFinite(Number(seconds))) return 'Unknown';
   const total = Math.round(Number(seconds));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
 }
 
-// Format a raw view count number into a compact string (e.g. 1.4M, 230K).
 function formatViewCount(count) {
   if (count == null || !Number.isFinite(Number(count))) return 'Unknown';
   const n = Number(count);
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M views`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K views`;
+  if (n >= 1_000_000) return `${(n/1_000_000).toFixed(1)}M views`;
+  if (n >= 1_000) return `${Math.round(n/1_000)}K views`;
   return `${n} views`;
 }
 
 function parseProgress(logs) {
   if (!Array.isArray(logs)) return null;
-  for (let i = logs.length - 1; i >= 0; i -= 1) {
+  for (let i = logs.length - 1; i >= 0; i--) {
     const line = String(logs[i] ?? '').replace(ANSI_ESCAPE_RE, '').trim();
     const match = line.match(DOWNLOAD_PROGRESS_RE);
     if (!match) continue;
@@ -64,17 +63,11 @@ function safeRead(key, fallback) {
     const raw = localStorage.getItem(key);
     if (raw == null) return fallback;
     return JSON.parse(raw);
-  } catch {
-    return fallback;
-  }
+  } catch { return fallback; }
 }
 
 function formatDate(iso) {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
 }
 
 function getValidation(url) {
@@ -84,42 +77,117 @@ function getValidation(url) {
   return { state: 'invalid', message: 'Use a valid YouTube / Shorts / Playlist URL.' };
 }
 
-// Icon components keep JSX clean
+// ── Small SVG icons ──────────────────────────────────────────────────────────
 function IconSettings() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
     </svg>
   );
 }
-
 function IconCheck() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12" />
+      <polyline points="20 6 9 17 4 12"/>
     </svg>
   );
 }
-
 function IconX() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
     </svg>
   );
 }
-
 function IconChevron({ open }) {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
       style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
-      <polyline points="6 9 12 15 18 9" />
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  );
+}
+function IconLogout() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
     </svg>
   );
 }
 
+// ── Quota bar component ───────────────────────────────────────────────────────
+function QuotaBar({ quota, tier }) {
+  if (tier === 'pro' || !quota) return null;
+  const { used, limit } = quota;
+  const pct = Math.min(100, Math.round((used / limit) * 100));
+  const nearLimit = used >= limit - 1;
+  return (
+    <div className="quota-bar-wrap">
+      <div className="quota-bar-label">
+        <span>{used} / {limit} downloads used today</span>
+        {nearLimit && used < limit && <span className="quota-warn">Almost at limit</span>}
+        {used >= limit && <span className="quota-exhausted">Limit reached — upgrade to Pro</span>}
+      </div>
+      <div className="quota-track">
+        <div
+          className={`quota-fill${used >= limit ? ' quota-fill--full' : ''}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── User menu ─────────────────────────────────────────────────────────────────
+function UserMenu({ user, onLogout }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className="user-menu" ref={ref}>
+      <button className="user-avatar-btn" onClick={() => setOpen(v => !v)} type="button" aria-label="User menu">
+        {user.avatar_url
+          ? <img src={user.avatar_url} alt={user.name} className="user-avatar-img" referrerPolicy="no-referrer" />
+          : <span className="user-avatar-fallback">{user.name?.[0]?.toUpperCase() || '?'}</span>
+        }
+      </button>
+      {open && (
+        <div className="user-dropdown">
+          <div className="user-dropdown-header">
+            <strong>{user.name}</strong>
+            <span className="user-email">{user.email}</span>
+            <span className={`tier-badge tier-badge-${user.tier}`}>
+              {user.tier === 'pro' ? '⭐ Pro' : 'Free'}
+            </span>
+          </div>
+          <hr className="user-dropdown-divider" />
+          <button className="user-dropdown-item" onClick={onLogout} type="button">
+            <IconLogout /> Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────────────────
 function App() {
+  // Auth state
+  const [authState, setAuthState] = useState('loading'); // loading | unauthenticated | authenticated
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authError, setAuthError] = useState('');
+
+  // App state
   const [theme, setTheme] = useState('light');
   const [inputText, setInputText] = useState('');
   const [formatQuality, setFormatQuality] = useState('best_mp4');
@@ -147,92 +215,103 @@ function App() {
   const previewKeyRef = useRef('');
 
   const firstUrl = useMemo(
-    () => inputText.split(/\s+/).map((x) => x.trim()).filter(Boolean)[0] || '',
+    () => inputText.split(/\s+/).map(x => x.trim()).filter(Boolean)[0] || '',
     [inputText],
   );
   const validation = useMemo(() => getValidation(firstUrl), [firstUrl]);
 
-  // ── Initialise from localStorage & server ────────────────────────────────
+  // ── Bootstrap: check auth, then load app data ───────────────────────────
   useEffect(() => {
+    // Check for auth error from OAuth redirect
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get('auth_error');
+    if (err) {
+      setAuthError(err);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    const bootstrap = async () => {
+      try {
+        const res = await fetch('/auth/me', { credentials: 'include' });
+        if (!res.ok) {
+          setAuthState('unauthenticated');
+          return;
+        }
+        const data = await res.json();
+        setCurrentUser(data);
+        setAuthState('authenticated');
+      } catch {
+        setAuthState('unauthenticated');
+      }
+    };
+    bootstrap();
+  }, []);
+
+  // Load history + health once authenticated
+  useEffect(() => {
+    if (authState !== 'authenticated') return;
+
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') setTheme('dark');
     setOutputPath(safeRead(OUTPUT_PATH_KEY, ''));
     setClipboardMonitor(Boolean(safeRead(CLIPBOARD_MONITOR_KEY, false)));
-  }, []);
 
-  useEffect(() => {
     const loadServerInfo = async () => {
       try {
-        const [jobsResponse, healthResponse] = await Promise.all([
-          fetch('/api/jobs?limit=100'),
+        const [jobsRes, healthRes] = await Promise.all([
+          fetch('/api/jobs?limit=100', { credentials: 'include' }),
           fetch('/api/health'),
         ]);
-        if (jobsResponse.ok) {
-          const jobsPayload = await jobsResponse.json();
-          const successful = (jobsPayload.jobs || []).filter(
-            (job) => job.status === 'success' && job.result?.file_path,
-          );
-          setHistory(
-            successful.map((job) => ({
-              id: job.job_id,
-              title: job.result?.title || job.url,
-              thumbnail: job.result?.thumbnail || null,
-              format: FORMAT_OPTIONS.find((x) => x.value === job.quality)?.label || job.quality,
-              savedAt: job.updated_at,
-              filePath: job.result.file_path,
-            })),
-          );
+        if (jobsRes.ok) {
+          const payload = await jobsRes.json();
+          const successful = (payload.jobs || []).filter(j => j.status === 'success' && j.result?.file_path);
+          setHistory(successful.map(j => ({
+            id: j.job_id,
+            title: j.result?.title || j.url,
+            thumbnail: j.result?.thumbnail || null,
+            format: FORMAT_OPTIONS.find(x => x.value === j.quality)?.label || j.quality,
+            savedAt: j.updated_at,
+            filePath: j.result.file_path,
+          })));
         }
-        if (healthResponse.ok) {
-          const healthPayload = await healthResponse.json();
-          setYtDlpVersion(healthPayload?.yt_dlp?.version || 'unknown');
+        if (healthRes.ok) {
+          const hp = await healthRes.json();
+          setYtDlpVersion(hp?.yt_dlp?.version || 'unknown');
         }
-      } catch {
-        // ignore startup fetch errors
-      }
+      } catch { /* ignore */ }
     };
     loadServerInfo();
-  }, []);
+  }, [authState]);
 
-  // ── Sync side-effects ─────────────────────────────────────────────────────
+  // ── Side-effects ─────────────────────────────────────────────────────────
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  useEffect(() => {
-    localStorage.setItem(OUTPUT_PATH_KEY, JSON.stringify(outputPath));
-  }, [outputPath]);
+  useEffect(() => { localStorage.setItem(OUTPUT_PATH_KEY, JSON.stringify(outputPath)); }, [outputPath]);
+  useEffect(() => { localStorage.setItem(CLIPBOARD_MONITOR_KEY, JSON.stringify(clipboardMonitor)); }, [clipboardMonitor]);
 
   useEffect(() => {
-    localStorage.setItem(CLIPBOARD_MONITOR_KEY, JSON.stringify(clipboardMonitor));
-  }, [clipboardMonitor]);
-
-  useEffect(() => {
-    if (!toast) return undefined;
+    if (!toast) return;
     const t = setTimeout(() => setToast(''), TOAST_MS);
     return () => clearTimeout(t);
   }, [toast]);
 
-  // ── Close settings panel when clicking outside ────────────────────────────
+  // Close settings on outside click
   useEffect(() => {
-    if (!isSettingsOpen) return undefined;
-    const handleClick = (e) => {
-      if (settingsRef.current && !settingsRef.current.contains(e.target)) {
-        setIsSettingsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    if (!isSettingsOpen) return;
+    const h = (e) => { if (settingsRef.current && !settingsRef.current.contains(e.target)) setIsSettingsOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, [isSettingsOpen]);
 
-  // ── Global paste detection ────────────────────────────────────────────────
+  // Global paste detection (skip when typing in an input/textarea)
   useEffect(() => {
-    const onPaste = (event) => {
-      // Don't intercept paste when user is typing in an input/textarea
+    const onPaste = (e) => {
       const tag = document.activeElement?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      const pasted = event.clipboardData?.getData('text')?.trim();
+      const pasted = e.clipboardData?.getData('text')?.trim();
       if (!pasted || !YOUTUBE_URL_RE.test(pasted)) return;
       setInputText(pasted);
       setToast('URL pasted automatically.');
@@ -241,9 +320,9 @@ function App() {
     return () => document.removeEventListener('paste', onPaste);
   }, []);
 
-  // ── Clipboard monitor ─────────────────────────────────────────────────────
+  // Clipboard monitor
   useEffect(() => {
-    if (!clipboardMonitor) return undefined;
+    if (!clipboardMonitor) return;
     const interval = setInterval(async () => {
       try {
         const value = (await navigator.clipboard.readText()).trim();
@@ -251,43 +330,36 @@ function App() {
           setInputText(value);
           setToast('Clipboard monitor detected a YouTube URL.');
         }
-      } catch {
-        // ignore permission errors
-      }
+      } catch { /* ignore */ }
     }, 3200);
     return () => clearInterval(interval);
   }, [clipboardMonitor, firstUrl]);
 
-  // ── Preview fetching ──────────────────────────────────────────────────────
+  // ── Preview ───────────────────────────────────────────────────────────────
   const fetchPreview = async (url) => {
     if (!url || !YOUTUBE_URL_RE.test(url)) return;
-    const previewKey = `${url}::${playlistMode}`;
-    if (previewKeyRef.current === previewKey && preview) return;
+    const key = `${url}::${playlistMode}`;
+    if (previewKeyRef.current === key && preview) return;
     if (previewAbortRef.current) previewAbortRef.current.abort();
     const controller = new AbortController();
     previewAbortRef.current = controller;
     setIsPreviewLoading(true);
     setPreviewError('');
     try {
-      const response = await fetch('/api/preview', {
+      const res = await fetch('/api/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, playlist_mode: playlistMode }),
         signal: controller.signal,
+        credentials: 'include',
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Failed to preview');
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || 'Failed to preview');
       setPreview(payload);
-      if (payload.playlist?.entries?.length) {
-        setSelectedPlaylistItems(payload.playlist.entries.map((entry) => entry.index));
-      } else {
-        setSelectedPlaylistItems([]);
-      }
-      previewKeyRef.current = previewKey;
-    } catch (previewFetchError) {
-      if (previewFetchError.name !== 'AbortError') {
-        setPreviewError(previewFetchError.message);
-      }
+      setSelectedPlaylistItems(payload.playlist?.entries?.length ? payload.playlist.entries.map(e => e.index) : []);
+      previewKeyRef.current = key;
+    } catch (err) {
+      if (err.name !== 'AbortError') setPreviewError(err.message);
     } finally {
       if (previewAbortRef.current === controller) {
         previewAbortRef.current = null;
@@ -303,202 +375,171 @@ function App() {
     if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
     if (!firstUrl || validation.state !== 'valid') return;
     previewDebounceRef.current = setTimeout(() => fetchPreview(firstUrl), PREVIEW_DEBOUNCE_MS);
-    return () => {
-      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
-    };
+    return () => { if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current); };
   }, [firstUrl, validation.state, playlistMode]);
 
-  useEffect(
-    () => () => {
-      if (previewAbortRef.current) previewAbortRef.current.abort();
-    },
-    [],
-  );
+  useEffect(() => () => { if (previewAbortRef.current) previewAbortRef.current.abort(); }, []);
 
   // ── Queue polling ─────────────────────────────────────────────────────────
   useEffect(() => {
-    const active = queue.filter((item) => item.jobId && ['queued', 'running'].includes(item.status));
-    if (!active.length) return undefined;
+    const active = queue.filter(item => item.jobId && ['queued','running'].includes(item.status));
+    if (!active.length) return;
     const timer = setInterval(async () => {
-      await Promise.all(
-        active.map(async (item) => {
-          try {
-            const response = await fetch(`/api/jobs/${item.jobId}`);
-            if (!response.ok) return;
-            const payload = await response.json();
-            const prog = parseProgress(payload.logs);
-            setQueue((prev) =>
-              prev.map((x) =>
-                x.localId === item.localId
-                  ? {
-                      ...x,
-                      status: payload.status,
-                      logs: payload.logs || [],
-                      result: payload.result,
-                      error: payload.error,
-                      progress: prog?.percent ?? (payload.status === 'success' ? 100 : 0),
-                      speed: prog?.speed || (payload.status === 'queued' ? 'Waiting...' : 'N/A'),
-                      eta: prog?.eta || (payload.status === 'queued' ? 'Waiting...' : 'N/A'),
-                    }
-                  : x,
-              ),
-            );
-          } catch {
-            // ignore
-          }
-        }),
-      );
+      await Promise.all(active.map(async (item) => {
+        try {
+          const res = await fetch(`/api/jobs/${item.jobId}`, { credentials: 'include' });
+          if (!res.ok) return;
+          const payload = await res.json();
+          const prog = parseProgress(payload.logs);
+          setQueue(prev => prev.map(x =>
+            x.localId !== item.localId ? x : {
+              ...x,
+              status: payload.status,
+              logs: payload.logs || [],
+              result: payload.result,
+              error: payload.error,
+              progress: prog?.percent ?? (payload.status === 'success' ? 100 : 0),
+              speed: prog?.speed || (payload.status === 'queued' ? 'Waiting...' : 'N/A'),
+              eta: prog?.eta || (payload.status === 'queued' ? 'Waiting...' : 'N/A'),
+            }
+          ));
+        } catch { /* ignore */ }
+      }));
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [queue]);
 
-  // ── Record completed downloads to history ─────────────────────────────────
+  // Record finished jobs to history + refresh quota
   useEffect(() => {
-    queue.forEach((item) => {
+    let didRecord = false;
+    queue.forEach(item => {
       if (item.status !== 'success' || !item.result?.file_path || item.recorded) return;
-      setHistory((prev) => [
-        {
-          id: item.jobId,
-          title: item.result.title || item.url,
-          thumbnail: item.result?.thumbnail || item.thumbnail || null,
-          format: FORMAT_OPTIONS.find((x) => x.value === item.quality)?.label || item.quality,
-          savedAt: new Date().toISOString(),
-          filePath: item.result.file_path,
-        },
-        ...prev,
-      ]);
-      setQueue((prev) => prev.map((x) => (x.localId === item.localId ? { ...x, recorded: true } : x)));
+      didRecord = true;
+      setHistory(prev => [{
+        id: item.jobId,
+        title: item.result.title || item.url,
+        thumbnail: item.result?.thumbnail || item.thumbnail || null,
+        format: FORMAT_OPTIONS.find(x => x.value === item.quality)?.label || item.quality,
+        savedAt: new Date().toISOString(),
+        filePath: item.result.file_path,
+      }, ...prev]);
+      setQueue(prev => prev.map(x => x.localId === item.localId ? { ...x, recorded: true } : x));
     });
+    // Refresh user quota after a successful download
+    if (didRecord) {
+      fetch('/auth/me', { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) setCurrentUser(data); })
+        .catch(() => {});
+    }
   }, [queue]);
 
-  // ── Submit handler ────────────────────────────────────────────────────────
-  const enqueueDownloads = async (event) => {
-    event.preventDefault();
+  // ── Submit ────────────────────────────────────────────────────────────────
+  const enqueueDownloads = async (e) => {
+    e.preventDefault();
     setError('');
-    const urls = inputText
-      .split(/\s+/)
-      .map((x) => x.trim())
-      .filter(Boolean)
-      .filter((x) => YOUTUBE_URL_RE.test(x));
-    if (!urls.length) {
-      setError('Add at least one valid YouTube URL.');
-      return;
-    }
-
-    // FIX: use the resolved output path (with fallback) consistently
-    const resolvedOutputPath = outputPath.trim() || '';
+    const urls = inputText.split(/\s+/).map(x => x.trim()).filter(Boolean).filter(x => YOUTUBE_URL_RE.test(x));
+    if (!urls.length) { setError('Add at least one valid YouTube URL.'); return; }
 
     const created = await Promise.all(
       urls.map(async (url, idx) => {
         const body = {
-          url,
-          quality: formatQuality,
-          output_path: resolvedOutputPath,
+          url, quality: formatQuality,
+          output_path: outputPath.trim() || '',
           playlist_mode: playlistMode,
           playlist_items: playlistMode && idx === 0 ? selectedPlaylistItems : [],
           download_subtitles: downloadSubtitles,
-          subtitle_languages: subtitleLangs
-            .split(',')
-            .map((x) => x.trim())
-            .filter(Boolean),
+          subtitle_languages: subtitleLangs.split(',').map(x => x.trim()).filter(Boolean),
           save_thumbnail_only: saveThumbnailOnly,
         };
-        const response = await fetch('/api/download', {
+        const res = await fetch('/api/download', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          credentials: 'include',
         });
-        const payload = await response.json();
-        if (!response.ok) {
-          throw new Error(payload.error || `Failed creating job for ${url}`);
-        }
+        const payload = await res.json();
+        if (!res.ok) throw new Error(payload.error || `Failed creating job for ${url}`);
         return {
-          localId: uid(),
-          jobId: payload.job_id,
-          url,
-          status: payload.status,
-          quality: formatQuality,
-          outputPath: resolvedOutputPath || '~/Downloads',
-          logs: [],
-          progress: 0,
-          speed: 'Waiting...',
-          eta: 'Waiting...',
+          localId: uid(), jobId: payload.job_id, url,
+          status: payload.status, quality: formatQuality,
+          outputPath: outputPath.trim() || '~/Downloads',
+          logs: [], progress: 0,
+          speed: 'Waiting...', eta: 'Waiting...',
           thumbnail: idx === 0 ? preview?.thumbnail || null : null,
-          result: null,
-          error: null,
-          recorded: false,
+          result: null, error: null, recorded: false,
         };
       }),
-    ).catch((enqueueError) => {
-      setError(enqueueError.message);
-      return [];
-    });
+    ).catch(err => { setError(err.message); return []; });
 
     if (created.length) {
-      setQueue((prev) => [...created, ...prev]);
+      setQueue(prev => [...created, ...prev]);
       setToast(`${created.length} job${created.length > 1 ? 's' : ''} added to queue.`);
     }
   };
 
   const togglePlaylistItem = (index) => {
-    setSelectedPlaylistItems((prev) =>
-      prev.includes(index) ? prev.filter((x) => x !== index) : [...prev, index].sort((a, b) => a - b),
+    setSelectedPlaylistItems(prev =>
+      prev.includes(index) ? prev.filter(x => x !== index) : [...prev, index].sort((a,b) => a-b)
     );
   };
 
-  const toggleTheme = () => setTheme((current) => (current === 'light' ? 'dark' : 'light'));
+  const handleLogout = async () => {
+    await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+    setAuthState('unauthenticated');
+    setCurrentUser(null);
+    setQueue([]);
+    setHistory([]);
+  };
 
+  const toggleTheme = () => setTheme(c => c === 'light' ? 'dark' : 'light');
+
+  // ── Render guards ─────────────────────────────────────────────────────────
+  if (authState === 'loading') {
+    return (
+      <main className="page-shell">
+        <div className="auth-loading">
+          <div className="auth-spinner" />
+          <p>Loading...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (authState === 'unauthenticated') {
+    return <LoginPage authError={authError} />;
+  }
+
+  // ── Main UI ───────────────────────────────────────────────────────────────
   return (
     <main className="page-shell">
       <section className="card">
 
-        {/* ── Header ──────────────────────────────────────────────────── */}
+        {/* Header */}
         <div className="header-row">
           <h1>YouTube Downloader</h1>
-          <div className="header-actions" ref={settingsRef}>
-            <button
-              className="settings-toggle"
-              type="button"
-              onClick={() => setIsSettingsOpen((current) => !current)}
-              aria-expanded={isSettingsOpen}
-              aria-label="Open settings"
-              title="Settings"
-            >
-              <IconSettings />
-            </button>
-            {isSettingsOpen ? (
-              <section className="settings-panel">
-                <h3>Settings</h3>
-                <label>
-                  <input type="checkbox" checked={theme === 'dark'} onChange={toggleTheme} />
-                  Dark mode
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={downloadSubtitles}
-                    onChange={(e) => setDownloadSubtitles(e.target.checked)}
-                  />
-                  Download subtitles
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={saveThumbnailOnly}
-                    onChange={(e) => setSaveThumbnailOnly(e.target.checked)}
-                  />
-                  Save thumbnail only
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={clipboardMonitor}
-                    onChange={(e) => setClipboardMonitor(e.target.checked)}
-                  />
-                  Clipboard monitor
-                </label>
-              </section>
-            ) : null}
+          <div className="header-actions-row">
+            {/* Settings gear */}
+            <div className="header-actions" ref={settingsRef}>
+              <button
+                className="settings-toggle" type="button"
+                onClick={() => setIsSettingsOpen(v => !v)}
+                aria-expanded={isSettingsOpen} aria-label="Settings" title="Settings"
+              >
+                <IconSettings />
+              </button>
+              {isSettingsOpen && (
+                <section className="settings-panel">
+                  <h3>Settings</h3>
+                  <label><input type="checkbox" checked={theme === 'dark'} onChange={toggleTheme}/> Dark mode</label>
+                  <label><input type="checkbox" checked={downloadSubtitles} onChange={e => setDownloadSubtitles(e.target.checked)}/> Download subtitles</label>
+                  <label><input type="checkbox" checked={saveThumbnailOnly} onChange={e => setSaveThumbnailOnly(e.target.checked)}/> Save thumbnail only</label>
+                  <label><input type="checkbox" checked={clipboardMonitor} onChange={e => setClipboardMonitor(e.target.checked)}/> Clipboard monitor</label>
+                </section>
+              )}
+            </div>
+            {/* User menu */}
+            {currentUser && <UserMenu user={currentUser} onLogout={handleLogout} />}
           </div>
         </div>
 
@@ -506,18 +547,17 @@ function App() {
           Automatic preview, persistent history, smart queue limits, and creator-friendly download options.
         </p>
 
-        {/* ── Download form ────────────────────────────────────────────── */}
+        {/* Quota bar for free users */}
+        <QuotaBar quota={currentUser?.quota} tier={currentUser?.tier} />
+
+        {/* Form */}
         <form className="download-form" onSubmit={enqueueDownloads}>
           <label htmlFor="video-url">YouTube URL (one or multiple, space/newline separated)</label>
           <textarea
-            id="video-url"
-            className="url-textarea"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
+            id="video-url" className="url-textarea" value={inputText}
+            onChange={e => setInputText(e.target.value)}
             placeholder="Paste one or multiple URLs here..."
           />
-
-          {/* URL validation feedback with icon */}
           <div className={`url-feedback url-feedback-${validation.state}`}>
             {validation.state !== 'idle' && (
               <span className="url-feedback-icon">
@@ -530,161 +570,109 @@ function App() {
           <div className="option-grid">
             <div>
               <label htmlFor="format-quality">Format &amp; quality</label>
-              <select
-                id="format-quality"
-                value={formatQuality}
-                onChange={(e) => setFormatQuality(e.target.value)}
-              >
-                {FORMAT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
+              <select id="format-quality" value={formatQuality} onChange={e => setFormatQuality(e.target.value)}>
+                {FORMAT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
             </div>
             <div>
               <label htmlFor="output-path">Output folder</label>
-              <input
-                id="output-path"
-                type="text"
-                value={outputPath}
-                onChange={(e) => setOutputPath(e.target.value)}
-                placeholder="Leave empty to use ~/Downloads"
-              />
+              <input id="output-path" type="text" value={outputPath}
+                onChange={e => setOutputPath(e.target.value)}
+                placeholder="Leave empty to use ~/Downloads" />
             </div>
           </div>
 
           <div className="toggles-grid">
-            <label>
-              <input
-                type="checkbox"
-                checked={playlistMode}
-                onChange={(e) => setPlaylistMode(e.target.checked)}
-              />
-              Playlist mode
-            </label>
+            <label><input type="checkbox" checked={playlistMode} onChange={e => setPlaylistMode(e.target.checked)}/> Playlist mode</label>
           </div>
 
-          {downloadSubtitles ? (
+          {downloadSubtitles && (
             <div>
               <label htmlFor="subtitle-langs">Subtitle languages (comma-separated)</label>
-              <input
-                id="subtitle-langs"
-                type="text"
-                value={subtitleLangs}
-                onChange={(e) => setSubtitleLangs(e.target.value)}
-              />
+              <input id="subtitle-langs" type="text" value={subtitleLangs} onChange={e => setSubtitleLangs(e.target.value)}/>
             </div>
-          ) : null}
+          )}
 
           <div className="form-actions">
-            <button
-              type="button"
-              className="secondary-button"
+            <button type="button" className="secondary-button"
               onClick={() => fetchPreview(firstUrl)}
-              disabled={!firstUrl || isPreviewLoading || validation.state !== 'valid'}
-            >
+              disabled={!firstUrl || isPreviewLoading || validation.state !== 'valid'}>
               {isPreviewLoading ? 'Loading preview...' : 'Refresh preview'}
             </button>
-            <button type="submit">Add to Download Queue</button>
+            <button type="submit"
+              disabled={currentUser?.tier === 'free' && currentUser?.quota?.used >= currentUser?.quota?.limit}>
+              Add to Download Queue
+            </button>
           </div>
         </form>
 
-        {previewError ? <div className="error-box">{previewError}</div> : null}
-        {error ? <div className="error-box">{error}</div> : null}
+        {previewError && <div className="error-box">{previewError}</div>}
+        {error && <div className="error-box">{error}</div>}
 
-        {/* ── Video preview ────────────────────────────────────────────── */}
-        {preview ? (
+        {/* Preview panel */}
+        {preview && (
           <section className="preview-panel">
             <div className="preview-media">
-              {preview.thumbnail ? (
-                <img className="preview-thumbnail" src={preview.thumbnail} alt={preview.title} />
-              ) : (
-                <div className="preview-thumbnail preview-thumbnail-placeholder">No thumbnail</div>
-              )}
+              {preview.thumbnail
+                ? <img className="preview-thumbnail" src={preview.thumbnail} alt={preview.title}/>
+                : <div className="preview-thumbnail preview-thumbnail-placeholder">No thumbnail</div>}
             </div>
             <div className="preview-details">
               <span className="preview-label">Preview</span>
               <h2>{preview.title}</h2>
               <p className="preview-channel">{preview.channel}</p>
               <div className="preview-meta">
-                {/* FIX: format raw seconds into M:SS; format raw count into "1.4M views" */}
                 <span>⏱ {formatDuration(preview.duration)}</span>
                 <span>👁 {formatViewCount(preview.view_count)}</span>
               </div>
             </div>
           </section>
-        ) : null}
+        )}
 
-        {/* ── Playlist picker ──────────────────────────────────────────── */}
-        {playlistMode && preview?.playlist ? (
+        {/* Playlist picker */}
+        {playlistMode && preview?.playlist && (
           <section className="playlist-panel">
-            <h3>
-              Playlist: {preview.playlist.title}{' '}
-              <span className="playlist-count">({preview.playlist.count} videos)</span>
-            </h3>
+            <h3>Playlist: {preview.playlist.title} <span className="playlist-count">({preview.playlist.count} videos)</span></h3>
             <div className="playlist-list">
-              {preview.playlist.entries.map((entry) => (
+              {preview.playlist.entries.map(entry => (
                 <label key={entry.index} className="playlist-item">
-                  <input
-                    type="checkbox"
-                    checked={selectedPlaylistItems.includes(entry.index)}
-                    onChange={() => togglePlaylistItem(entry.index)}
-                  />
-                  {entry.thumbnail ? (
-                    <img src={entry.thumbnail} alt={entry.title} className="playlist-thumb" />
-                  ) : (
-                    <div className="playlist-thumb playlist-thumb-placeholder">No image</div>
-                  )}
-                  <span>
-                    {entry.index}. {entry.title}
-                  </span>
+                  <input type="checkbox" checked={selectedPlaylistItems.includes(entry.index)} onChange={() => togglePlaylistItem(entry.index)}/>
+                  {entry.thumbnail
+                    ? <img src={entry.thumbnail} alt={entry.title} className="playlist-thumb"/>
+                    : <div className="playlist-thumb playlist-thumb-placeholder">No image</div>}
+                  <span>{entry.index}. {entry.title}</span>
                 </label>
               ))}
             </div>
           </section>
-        ) : null}
+        )}
 
-        {/* ── Download queue ───────────────────────────────────────────── */}
+        {/* Queue */}
         <section className="queue-panel">
           <h2>Download Queue</h2>
           {queue.length ? (
             <div className="queue-list">
-              {queue.map((item) => (
+              {queue.map(item => (
                 <article key={item.localId} className="queue-item">
                   <div className="queue-head">
-                    {/* FIX: show title from result when available, fall back to URL */}
                     <p className="queue-url">{item.result?.title || item.url}</p>
                     <span className={`queue-badge queue-badge-${item.status}`}>{item.status}</span>
                   </div>
                   <p className="queue-meta">
-                    {FORMAT_OPTIONS.find((opt) => opt.value === item.quality)?.label} &nbsp;·&nbsp;{' '}
-                    {item.outputPath}
+                    {FORMAT_OPTIONS.find(o => o.value === item.quality)?.label} &nbsp;·&nbsp; {item.outputPath}
                   </p>
-                  {/* FIX: apply --waiting shimmer class when job hasn't started yet */}
-                  <div
-                    className={`progress-track${item.status === 'queued' ? ' progress-track--waiting' : ''}`}
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.round(item.progress)}
-                  >
-                    <div className="progress-fill" style={{ width: `${item.progress}%` }} />
+                  <div className={`progress-track${item.status === 'queued' ? ' progress-track--waiting' : ''}`}
+                    role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(item.progress)}>
+                    <div className="progress-fill" style={{ width: `${item.progress}%` }}/>
                   </div>
                   <div className="progress-meta">
-                    <span>
-                      <strong>Speed:</strong> {item.speed}
-                    </span>
-                    <span>
-                      <strong>ETA:</strong> {item.eta}
-                    </span>
+                    <span><strong>Speed:</strong> {item.speed}</span>
+                    <span><strong>ETA:</strong> {item.eta}</span>
                   </div>
-                  {item.result?.file_path ? (
-                    <p className="queue-success">
-                      ✓ Saved to <span className="queue-path">{item.result.file_path}</span>
-                    </p>
-                  ) : null}
-                  {item.error ? <p className="queue-error">{item.error}</p> : null}
+                  {item.result?.file_path && (
+                    <p className="queue-success">✓ Saved to <span className="queue-path">{item.result.file_path}</span></p>
+                  )}
+                  {item.error && <p className="queue-error">{item.error}</p>}
                 </article>
               ))}
             </div>
@@ -693,48 +681,33 @@ function App() {
           )}
         </section>
 
-        {/* ── Download history ─────────────────────────────────────────── */}
+        {/* History */}
         <section className="history-panel">
-          <button
-            type="button"
-            className="history-toggle"
-            onClick={() => setHistoryOpen((current) => !current)}
-            aria-expanded={historyOpen}
-          >
+          <button type="button" className="history-toggle"
+            onClick={() => setHistoryOpen(v => !v)} aria-expanded={historyOpen}>
             <span>Download History</span>
             <span className="history-toggle-right">
               <span className="history-count">{history.length}</span>
-              <IconChevron open={historyOpen} />
+              <IconChevron open={historyOpen}/>
             </span>
           </button>
-          {historyOpen ? (
+          {historyOpen && (
             <div className="history-list">
-              {history.length ? (
-                history.map((entry) => (
-                  <article key={entry.id} className="history-item">
-                    {entry.thumbnail ? (
-                      <img src={entry.thumbnail} alt={entry.title} className="history-thumb" />
-                    ) : (
-                      <div className="history-thumb history-thumb-placeholder">No image</div>
-                    )}
-                    <div className="history-content">
-                      <h4>{entry.title}</h4>
-                      <p>{entry.format}</p>
-                      <p>{formatDate(entry.savedAt)}</p>
-                      {/* FIX: render the actual file path in history cards */}
-                      {entry.filePath ? (
-                        <p className="history-path" title={entry.filePath}>
-                          {entry.filePath}
-                        </p>
-                      ) : null}
-                    </div>
-                  </article>
-                ))
-              ) : (
-                <p className="history-empty">No downloads yet.</p>
-              )}
+              {history.length ? history.map(entry => (
+                <article key={entry.id} className="history-item">
+                  {entry.thumbnail
+                    ? <img src={entry.thumbnail} alt={entry.title} className="history-thumb"/>
+                    : <div className="history-thumb history-thumb-placeholder">No image</div>}
+                  <div className="history-content">
+                    <h4>{entry.title}</h4>
+                    <p>{entry.format}</p>
+                    <p>{formatDate(entry.savedAt)}</p>
+                    {entry.filePath && <p className="history-path" title={entry.filePath}>{entry.filePath}</p>}
+                  </div>
+                </article>
+              )) : <p className="history-empty">No downloads yet.</p>}
             </div>
-          ) : null}
+          )}
         </section>
 
         <footer className="footer-row">
@@ -742,7 +715,7 @@ function App() {
         </footer>
       </section>
 
-      {toast ? <div className="toast">{toast}</div> : null}
+      {toast && <div className="toast">{toast}</div>}
     </main>
   );
 }
