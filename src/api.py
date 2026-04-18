@@ -45,7 +45,8 @@ FRIENDLY_ERROR_PATTERNS = [
 def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
-def _sanitize_error(error: Exception | str) -> str:
+
+def _sanitize_error(error) -> str:
     raw = str(error)
     cleaned = raw.replace("Download failed:", "").replace("Preview failed:", "").strip()
     for pattern, message in FRIENDLY_ERROR_PATTERNS:
@@ -164,6 +165,7 @@ def _list_jobs(limit: int = 100):
             rows = conn.execute("SELECT * FROM jobs ORDER BY datetime(created_at) DESC LIMIT ?", (limit,)).fetchall()
     return [_row_to_job(row) for row in rows]
 
+
 def _append_log(job_id: str, message: str):
     timestamped = f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
     with db_lock:
@@ -179,7 +181,7 @@ def _append_log(job_id: str, message: str):
             )
 
 
-def _set_status(job_id: str, status: str, result=None, error: str | None = None):
+def _set_status(job_id: str, status: str, result=None, error=None):
     with db_lock:
         with _connect_db() as conn:
             conn.execute(
@@ -188,7 +190,7 @@ def _set_status(job_id: str, status: str, result=None, error: str | None = None)
             )
 
 
-def _run_command(cmd: list[str]) -> subprocess.CompletedProcess:
+def _run_command(cmd: list) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=30)
 
 
@@ -213,7 +215,6 @@ def _auto_update_ytdlp_if_enabled():
     YtDlpState.auto_update_attempted = AUTO_UPDATE_YTDLP
     if not AUTO_UPDATE_YTDLP:
         return
-
     commands = [
         ["yt-dlp", "-U"],
         ["python", "-m", "yt_dlp", "-U"],
@@ -241,26 +242,28 @@ def _run_download(
     subtitle_languages,
     save_thumbnail_only: bool,
 ):
+    # BUGFIX: The semaphore must wrap the ENTIRE download, not just the status
+    # update. The original code released the slot immediately after _set_status,
+    # so all jobs ran concurrently and the limit was never enforced.
     with download_slots:
         _set_status(job_id, "running")
-
-    try:
-        result = download_video(
-            url,
-            output_path=output_path,
-            progress_callback=lambda msg: _append_log(job_id, msg),
-            quality=quality,
-            playlist_mode=playlist_mode,
-            playlist_items=playlist_items,
-            download_subtitles=download_subtitles,
-            subtitle_languages=subtitle_languages,
-            save_thumbnail_only=save_thumbnail_only,
-        )
-        _set_status(job_id, "success", result=result)
-    except Exception as exc:
-        friendly = _sanitize_error(exc)
-        _set_status(job_id, "error", error=friendly)
-        _append_log(job_id, friendly)
+        try:
+            result = download_video(
+                url,
+                output_path=output_path,
+                progress_callback=lambda msg: _append_log(job_id, msg),
+                quality=quality,
+                playlist_mode=playlist_mode,
+                playlist_items=playlist_items,
+                download_subtitles=download_subtitles,
+                subtitle_languages=subtitle_languages,
+                save_thumbnail_only=save_thumbnail_only,
+            )
+            _set_status(job_id, "success", result=result)
+        except Exception as exc:
+            friendly = _sanitize_error(exc)
+            _set_status(job_id, "error", error=friendly)
+            _append_log(job_id, friendly)
 
 
 def _initialize_runtime_state():
@@ -293,10 +296,8 @@ def preview_video():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
     playlist_mode = bool(data.get("playlist_mode"))
-
     if not url:
         return jsonify({"error": "The 'url' field is required."}), 400
-
     try:
         preview = get_video_preview(url, playlist_mode=playlist_mode)
         return jsonify(preview)
@@ -318,15 +319,18 @@ def create_download_job():
 
     if not url:
         return jsonify({"error": "The 'url' field is required."}), 400
-
     if quality not in FORMAT_PRESETS:
         return jsonify({"error": "Invalid quality preset."}), 400
+
+    # Resolve output path here so both the DB record and the worker agree on it
+    resolved_output = output_path or str(DEFAULT_OUTPUT_DIR)
+
     job_id = str(uuid4())
     new_job = {
         "job_id": job_id,
         "url": url,
         "quality": quality,
-        "output_path": output_path or str(DEFAULT_OUTPUT_DIR),
+        "output_path": resolved_output,
         "playlist_mode": playlist_mode,
         "playlist_items": playlist_items,
         "download_subtitles": download_subtitles,
@@ -348,7 +352,7 @@ def create_download_job():
             job_id,
             url,
             quality,
-            output_path,
+            resolved_output,
             playlist_mode,
             playlist_items,
             download_subtitles,
@@ -364,11 +368,10 @@ def create_download_job():
 @app.get("/api/jobs/<job_id>")
 def get_job(job_id: str):
     job = _get_job(job_id)
-
     if not job:
         return jsonify({"error": "Job not found."}), 404
-
     return jsonify(job)
+
 
 @app.get("/api/jobs")
 def list_jobs():

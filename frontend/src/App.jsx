@@ -22,6 +22,26 @@ const DOWNLOAD_PROGRESS_RE =
 
 const uid = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+// Format raw seconds (number) into a human-readable "H:MM:SS" / "M:SS" string.
+function formatDuration(seconds) {
+  if (seconds == null || !Number.isFinite(Number(seconds))) return 'Unknown';
+  const total = Math.round(Number(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// Format a raw view count number into a compact string (e.g. 1.4M, 230K).
+function formatViewCount(count) {
+  if (count == null || !Number.isFinite(Number(count))) return 'Unknown';
+  const n = Number(count);
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M views`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K views`;
+  return `${n} views`;
+}
+
 function parseProgress(logs) {
   if (!Array.isArray(logs)) return null;
   for (let i = logs.length - 1; i >= 0; i -= 1) {
@@ -60,8 +80,43 @@ function formatDate(iso) {
 function getValidation(url) {
   const value = url.trim();
   if (!value) return { state: 'idle', message: 'Paste a YouTube URL to start.' };
-  if (YOUTUBE_URL_RE.test(value)) return { state: 'valid', message: 'Valid URL. Preview loads automatically.' };
+  if (YOUTUBE_URL_RE.test(value)) return { state: 'valid', message: 'Valid URL — preview loads automatically.' };
   return { state: 'invalid', message: 'Use a valid YouTube / Shorts / Playlist URL.' };
+}
+
+// Icon components keep JSX clean
+function IconSettings() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function IconCheck() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function IconX() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+function IconChevron({ open }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+      style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
 }
 
 function App() {
@@ -84,29 +139,39 @@ function App() {
   const [historyOpen, setHistoryOpen] = useState(true);
   const [history, setHistory] = useState([]);
   const [error, setError] = useState('');
-  const [ytDlpVersion, setYtDlpVersion] = useState("unknown");
+  const [ytDlpVersion, setYtDlpVersion] = useState('unknown');
 
+  const settingsRef = useRef(null);
   const previewAbortRef = useRef(null);
   const previewDebounceRef = useRef(null);
   const previewKeyRef = useRef('');
 
-  const firstUrl = useMemo(() => inputText.split(/\s+/).map((x) => x.trim()).filter(Boolean)[0] || '', [inputText]);
+  const firstUrl = useMemo(
+    () => inputText.split(/\s+/).map((x) => x.trim()).filter(Boolean)[0] || '',
+    [inputText],
+  );
   const validation = useMemo(() => getValidation(firstUrl), [firstUrl]);
 
+  // ── Initialise from localStorage & server ────────────────────────────────
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') setTheme('dark');
     setOutputPath(safeRead(OUTPUT_PATH_KEY, ''));
     setClipboardMonitor(Boolean(safeRead(CLIPBOARD_MONITOR_KEY, false)));
   }, []);
+
   useEffect(() => {
     const loadServerInfo = async () => {
       try {
-        const [jobsResponse, healthResponse] = await Promise.all([fetch('/api/jobs?limit=100'), fetch('/api/health')]);
-
+        const [jobsResponse, healthResponse] = await Promise.all([
+          fetch('/api/jobs?limit=100'),
+          fetch('/api/health'),
+        ]);
         if (jobsResponse.ok) {
           const jobsPayload = await jobsResponse.json();
-          const successful = (jobsPayload.jobs || []).filter((job) => job.status === 'success' && job.result?.file_path);
+          const successful = (jobsPayload.jobs || []).filter(
+            (job) => job.status === 'success' && job.result?.file_path,
+          );
           setHistory(
             successful.map((job) => ({
               id: job.job_id,
@@ -118,7 +183,6 @@ function App() {
             })),
           );
         }
-
         if (healthResponse.ok) {
           const healthPayload = await healthResponse.json();
           setYtDlpVersion(healthPayload?.yt_dlp?.version || 'unknown');
@@ -127,10 +191,10 @@ function App() {
         // ignore startup fetch errors
       }
     };
-
     loadServerInfo();
   }, []);
 
+  // ── Sync side-effects ─────────────────────────────────────────────────────
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
@@ -150,17 +214,34 @@ function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // ── Close settings panel when clicking outside ────────────────────────────
+  useEffect(() => {
+    if (!isSettingsOpen) return undefined;
+    const handleClick = (e) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target)) {
+        setIsSettingsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isSettingsOpen]);
+
+  // ── Global paste detection ────────────────────────────────────────────────
   useEffect(() => {
     const onPaste = (event) => {
+      // Don't intercept paste when user is typing in an input/textarea
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       const pasted = event.clipboardData?.getData('text')?.trim();
       if (!pasted || !YOUTUBE_URL_RE.test(pasted)) return;
       setInputText(pasted);
-      setToast('Paste detected. URL captured.');
+      setToast('URL pasted automatically.');
     };
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
   }, []);
 
+  // ── Clipboard monitor ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!clipboardMonitor) return undefined;
     const interval = setInterval(async () => {
@@ -177,6 +258,7 @@ function App() {
     return () => clearInterval(interval);
   }, [clipboardMonitor, firstUrl]);
 
+  // ── Preview fetching ──────────────────────────────────────────────────────
   const fetchPreview = async (url) => {
     if (!url || !YOUTUBE_URL_RE.test(url)) return;
     const previewKey = `${url}::${playlistMode}`;
@@ -226,10 +308,14 @@ function App() {
     };
   }, [firstUrl, validation.state, playlistMode]);
 
-  useEffect(() => () => {
-    if (previewAbortRef.current) previewAbortRef.current.abort();
-  }, []);
+  useEffect(
+    () => () => {
+      if (previewAbortRef.current) previewAbortRef.current.abort();
+    },
+    [],
+  );
 
+  // ── Queue polling ─────────────────────────────────────────────────────────
   useEffect(() => {
     const active = queue.filter((item) => item.jobId && ['queued', 'running'].includes(item.status));
     if (!active.length) return undefined;
@@ -240,6 +326,7 @@ function App() {
             const response = await fetch(`/api/jobs/${item.jobId}`);
             if (!response.ok) return;
             const payload = await response.json();
+            const prog = parseProgress(payload.logs);
             setQueue((prev) =>
               prev.map((x) =>
                 x.localId === item.localId
@@ -249,9 +336,9 @@ function App() {
                       logs: payload.logs || [],
                       result: payload.result,
                       error: payload.error,
-                      progress: parseProgress(payload.logs)?.percent ?? (payload.status === 'success' ? 100 : 0),
-                      speed: parseProgress(payload.logs)?.speed || (payload.status === 'queued' ? 'Waiting...' : 'N/A'),
-                      eta: parseProgress(payload.logs)?.eta || (payload.status === 'queued' ? 'Waiting...' : 'N/A'),
+                      progress: prog?.percent ?? (payload.status === 'success' ? 100 : 0),
+                      speed: prog?.speed || (payload.status === 'queued' ? 'Waiting...' : 'N/A'),
+                      eta: prog?.eta || (payload.status === 'queued' ? 'Waiting...' : 'N/A'),
                     }
                   : x,
               ),
@@ -265,6 +352,7 @@ function App() {
     return () => clearInterval(timer);
   }, [queue]);
 
+  // ── Record completed downloads to history ─────────────────────────────────
   useEffect(() => {
     queue.forEach((item) => {
       if (item.status !== 'success' || !item.result?.file_path || item.recorded) return;
@@ -283,6 +371,7 @@ function App() {
     });
   }, [queue]);
 
+  // ── Submit handler ────────────────────────────────────────────────────────
   const enqueueDownloads = async (event) => {
     event.preventDefault();
     setError('');
@@ -296,13 +385,15 @@ function App() {
       return;
     }
 
+    // FIX: use the resolved output path (with fallback) consistently
+    const resolvedOutputPath = outputPath.trim() || '';
+
     const created = await Promise.all(
       urls.map(async (url, idx) => {
-        const normalizedOutputPath = outputPath.trim() || '~/Downloads';
         const body = {
           url,
           quality: formatQuality,
-          output_path: outputPath,
+          output_path: resolvedOutputPath,
           playlist_mode: playlistMode,
           playlist_items: playlistMode && idx === 0 ? selectedPlaylistItems : [],
           download_subtitles: downloadSubtitles,
@@ -327,7 +418,7 @@ function App() {
           url,
           status: payload.status,
           quality: formatQuality,
-          outputPath: normalizedOutputPath,
+          outputPath: resolvedOutputPath || '~/Downloads',
           logs: [],
           progress: 0,
           speed: 'Waiting...',
@@ -350,7 +441,9 @@ function App() {
   };
 
   const togglePlaylistItem = (index) => {
-    setSelectedPlaylistItems((prev) => (prev.includes(index) ? prev.filter((x) => x !== index) : [...prev, index].sort((a, b) => a - b)));
+    setSelectedPlaylistItems((prev) =>
+      prev.includes(index) ? prev.filter((x) => x !== index) : [...prev, index].sort((a, b) => a - b),
+    );
   };
 
   const toggleTheme = () => setTheme((current) => (current === 'light' ? 'dark' : 'light'));
@@ -358,17 +451,20 @@ function App() {
   return (
     <main className="page-shell">
       <section className="card">
+
+        {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="header-row">
           <h1>YouTube Downloader</h1>
-          <div className="header-actions">
+          <div className="header-actions" ref={settingsRef}>
             <button
               className="settings-toggle"
               type="button"
               onClick={() => setIsSettingsOpen((current) => !current)}
               aria-expanded={isSettingsOpen}
               aria-label="Open settings"
+              title="Settings"
             >
-              ☰
+              <IconSettings />
             </button>
             {isSettingsOpen ? (
               <section className="settings-panel">
@@ -378,38 +474,67 @@ function App() {
                   Dark mode
                 </label>
                 <label>
-                  <input type="checkbox" checked={downloadSubtitles} onChange={(event) => setDownloadSubtitles(event.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={downloadSubtitles}
+                    onChange={(e) => setDownloadSubtitles(e.target.checked)}
+                  />
                   Download subtitles
                 </label>
                 <label>
-                  <input type="checkbox" checked={saveThumbnailOnly} onChange={(event) => setSaveThumbnailOnly(event.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={saveThumbnailOnly}
+                    onChange={(e) => setSaveThumbnailOnly(e.target.checked)}
+                  />
                   Save thumbnail only
                 </label>
                 <label>
-                  <input type="checkbox" checked={clipboardMonitor} onChange={(event) => setClipboardMonitor(event.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={clipboardMonitor}
+                    onChange={(e) => setClipboardMonitor(e.target.checked)}
+                  />
                   Clipboard monitor
                 </label>
               </section>
             ) : null}
           </div>
         </div>
-        <p className="subtitle">Automatic preview, persistent history, smart queue limits, and creator-friendly download options.</p>
 
+        <p className="subtitle">
+          Automatic preview, persistent history, smart queue limits, and creator-friendly download options.
+        </p>
+
+        {/* ── Download form ────────────────────────────────────────────── */}
         <form className="download-form" onSubmit={enqueueDownloads}>
-          <label htmlFor="video-url">YouTube URL (single or multiple, separated by spaces/new lines)</label>
+          <label htmlFor="video-url">YouTube URL (one or multiple, space/newline separated)</label>
           <textarea
             id="video-url"
             className="url-textarea"
             value={inputText}
-            onChange={(event) => setInputText(event.target.value)}
+            onChange={(e) => setInputText(e.target.value)}
             placeholder="Paste one or multiple URLs here..."
           />
-          <div className={`url-feedback url-feedback-${validation.state}`}>{validation.message}</div>
+
+          {/* URL validation feedback with icon */}
+          <div className={`url-feedback url-feedback-${validation.state}`}>
+            {validation.state !== 'idle' && (
+              <span className="url-feedback-icon">
+                {validation.state === 'valid' ? <IconCheck /> : <IconX />}
+              </span>
+            )}
+            {validation.message}
+          </div>
 
           <div className="option-grid">
             <div>
               <label htmlFor="format-quality">Format &amp; quality</label>
-              <select id="format-quality" value={formatQuality} onChange={(event) => setFormatQuality(event.target.value)}>
+              <select
+                id="format-quality"
+                value={formatQuality}
+                onChange={(e) => setFormatQuality(e.target.value)}
+              >
                 {FORMAT_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
@@ -423,15 +548,19 @@ function App() {
                 id="output-path"
                 type="text"
                 value={outputPath}
-                onChange={(event) => setOutputPath(event.target.value)}
-                placeholder="Leave empty to use your Downloads folder"
+                onChange={(e) => setOutputPath(e.target.value)}
+                placeholder="Leave empty to use ~/Downloads"
               />
             </div>
           </div>
 
           <div className="toggles-grid">
             <label>
-              <input type="checkbox" checked={playlistMode} onChange={(event) => setPlaylistMode(event.target.checked)} />
+              <input
+                type="checkbox"
+                checked={playlistMode}
+                onChange={(e) => setPlaylistMode(e.target.checked)}
+              />
               Playlist mode
             </label>
           </div>
@@ -439,12 +568,22 @@ function App() {
           {downloadSubtitles ? (
             <div>
               <label htmlFor="subtitle-langs">Subtitle languages (comma-separated)</label>
-              <input id="subtitle-langs" type="text" value={subtitleLangs} onChange={(event) => setSubtitleLangs(event.target.value)} />
+              <input
+                id="subtitle-langs"
+                type="text"
+                value={subtitleLangs}
+                onChange={(e) => setSubtitleLangs(e.target.value)}
+              />
             </div>
           ) : null}
 
           <div className="form-actions">
-            <button type="button" className="secondary-button" onClick={() => fetchPreview(firstUrl)} disabled={!firstUrl || isPreviewLoading || validation.state !== 'valid'}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => fetchPreview(firstUrl)}
+              disabled={!firstUrl || isPreviewLoading || validation.state !== 'valid'}
+            >
               {isPreviewLoading ? 'Loading preview...' : 'Refresh preview'}
             </button>
             <button type="submit">Add to Download Queue</button>
@@ -454,33 +593,49 @@ function App() {
         {previewError ? <div className="error-box">{previewError}</div> : null}
         {error ? <div className="error-box">{error}</div> : null}
 
+        {/* ── Video preview ────────────────────────────────────────────── */}
         {preview ? (
           <section className="preview-panel">
             <div className="preview-media">
-              {preview.thumbnail ? <img className="preview-thumbnail" src={preview.thumbnail} alt={preview.title} /> : <div className="preview-thumbnail preview-thumbnail-placeholder">No thumbnail</div>}
+              {preview.thumbnail ? (
+                <img className="preview-thumbnail" src={preview.thumbnail} alt={preview.title} />
+              ) : (
+                <div className="preview-thumbnail preview-thumbnail-placeholder">No thumbnail</div>
+              )}
             </div>
             <div className="preview-details">
               <span className="preview-label">Preview</span>
               <h2>{preview.title}</h2>
               <p className="preview-channel">{preview.channel}</p>
               <div className="preview-meta">
-                <span>Duration: {preview.duration || 'Unknown'}</span>
-                <span>Views: {preview.view_count || 'Unknown'}</span>
+                {/* FIX: format raw seconds into M:SS; format raw count into "1.4M views" */}
+                <span>⏱ {formatDuration(preview.duration)}</span>
+                <span>👁 {formatViewCount(preview.view_count)}</span>
               </div>
             </div>
           </section>
         ) : null}
 
+        {/* ── Playlist picker ──────────────────────────────────────────── */}
         {playlistMode && preview?.playlist ? (
           <section className="playlist-panel">
             <h3>
-              Playlist: {preview.playlist.title} ({preview.playlist.count} videos)
+              Playlist: {preview.playlist.title}{' '}
+              <span className="playlist-count">({preview.playlist.count} videos)</span>
             </h3>
             <div className="playlist-list">
               {preview.playlist.entries.map((entry) => (
                 <label key={entry.index} className="playlist-item">
-                  <input type="checkbox" checked={selectedPlaylistItems.includes(entry.index)} onChange={() => togglePlaylistItem(entry.index)} />
-                  {entry.thumbnail ? <img src={entry.thumbnail} alt={entry.title} className="playlist-thumb" /> : <div className="playlist-thumb playlist-thumb-placeholder">No image</div>}
+                  <input
+                    type="checkbox"
+                    checked={selectedPlaylistItems.includes(entry.index)}
+                    onChange={() => togglePlaylistItem(entry.index)}
+                  />
+                  {entry.thumbnail ? (
+                    <img src={entry.thumbnail} alt={entry.title} className="playlist-thumb" />
+                  ) : (
+                    <div className="playlist-thumb playlist-thumb-placeholder">No image</div>
+                  )}
                   <span>
                     {entry.index}. {entry.title}
                   </span>
@@ -490,6 +645,7 @@ function App() {
           </section>
         ) : null}
 
+        {/* ── Download queue ───────────────────────────────────────────── */}
         <section className="queue-panel">
           <h2>Download Queue</h2>
           {queue.length ? (
@@ -497,20 +653,37 @@ function App() {
               {queue.map((item) => (
                 <article key={item.localId} className="queue-item">
                   <div className="queue-head">
-                    <p className="queue-url">{item.url}</p>
+                    {/* FIX: show title from result when available, fall back to URL */}
+                    <p className="queue-url">{item.result?.title || item.url}</p>
                     <span className={`queue-badge queue-badge-${item.status}`}>{item.status}</span>
                   </div>
                   <p className="queue-meta">
-                    {FORMAT_OPTIONS.find((opt) => opt.value === item.quality)?.label} | {item.outputPath}
+                    {FORMAT_OPTIONS.find((opt) => opt.value === item.quality)?.label} &nbsp;·&nbsp;{' '}
+                    {item.outputPath}
                   </p>
-                  <div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(item.progress)}>
+                  {/* FIX: apply --waiting shimmer class when job hasn't started yet */}
+                  <div
+                    className={`progress-track${item.status === 'queued' ? ' progress-track--waiting' : ''}`}
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(item.progress)}
+                  >
                     <div className="progress-fill" style={{ width: `${item.progress}%` }} />
                   </div>
                   <div className="progress-meta">
-                    <span>Speed: {item.speed}</span>
-                    <span>ETA: {item.eta}</span>
+                    <span>
+                      <strong>Speed:</strong> {item.speed}
+                    </span>
+                    <span>
+                      <strong>ETA:</strong> {item.eta}
+                    </span>
                   </div>
-                  {item.result?.file_path ? <p className="history-path">Done!</p> : null}
+                  {item.result?.file_path ? (
+                    <p className="queue-success">
+                      ✓ Saved to <span className="queue-path">{item.result.file_path}</span>
+                    </p>
+                  ) : null}
                   {item.error ? <p className="queue-error">{item.error}</p> : null}
                 </article>
               ))}
@@ -520,21 +693,40 @@ function App() {
           )}
         </section>
 
+        {/* ── Download history ─────────────────────────────────────────── */}
         <section className="history-panel">
-          <button type="button" className="history-toggle" onClick={() => setHistoryOpen((current) => !current)} aria-expanded={historyOpen}>
+          <button
+            type="button"
+            className="history-toggle"
+            onClick={() => setHistoryOpen((current) => !current)}
+            aria-expanded={historyOpen}
+          >
             <span>Download History</span>
-            <span>{historyOpen ? 'Hide' : 'Show'} ({history.length})</span>
+            <span className="history-toggle-right">
+              <span className="history-count">{history.length}</span>
+              <IconChevron open={historyOpen} />
+            </span>
           </button>
           {historyOpen ? (
             <div className="history-list">
               {history.length ? (
                 history.map((entry) => (
                   <article key={entry.id} className="history-item">
-                    {entry.thumbnail ? <img src={entry.thumbnail} alt={entry.title} className="history-thumb" /> : <div className="history-thumb history-thumb-placeholder">No image</div>}
+                    {entry.thumbnail ? (
+                      <img src={entry.thumbnail} alt={entry.title} className="history-thumb" />
+                    ) : (
+                      <div className="history-thumb history-thumb-placeholder">No image</div>
+                    )}
                     <div className="history-content">
                       <h4>{entry.title}</h4>
                       <p>{entry.format}</p>
                       <p>{formatDate(entry.savedAt)}</p>
+                      {/* FIX: render the actual file path in history cards */}
+                      {entry.filePath ? (
+                        <p className="history-path" title={entry.filePath}>
+                          {entry.filePath}
+                        </p>
+                      ) : null}
                     </div>
                   </article>
                 ))
@@ -544,6 +736,7 @@ function App() {
             </div>
           ) : null}
         </section>
+
         <footer className="footer-row">
           <span className="version-badge">yt-dlp {ytDlpVersion}</span>
         </footer>
