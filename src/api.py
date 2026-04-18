@@ -19,10 +19,14 @@ from auth import (
     FREE_QUEUE_LIMIT,
     PRO_QUEUE_LIMIT,
     check_quota,
+    create_checkout_session,
+    get_effective_tier,
     get_current_user,
+    get_plan_snapshot,
     increment_quota,
     init_auth_db,
     login_required,
+    sync_subscription_from_stripe,
 )
 from ytdownload import DEFAULT_OUTPUT_DIR, DEFAULT_QUALITY, FORMAT_PRESETS, download_video, get_video_preview
 
@@ -339,6 +343,7 @@ def preview_video():
 @login_required
 def create_download_job():
     user = get_current_user()
+    effective_tier = get_effective_tier(user["user_id"], fallback_tier=user.get("tier", "free"))
     data = request.get_json(silent=True) or {}
     url              = (data.get("url") or "").strip()
     quality          = (data.get("quality") or DEFAULT_QUALITY).strip()
@@ -355,14 +360,14 @@ def create_download_job():
         return jsonify({"error": "Invalid quality preset."}), 400
 
     # Quota check
-    if not check_quota(user["user_id"], user["tier"]):
+    if not check_quota(user["user_id"], effective_tier):
         from auth import FREE_DAILY_DOWNLOAD_LIMIT
         return jsonify({
             "error": f"Daily download limit reached ({FREE_DAILY_DOWNLOAD_LIMIT} downloads/day on the free plan). Upgrade to Pro for unlimited downloads."
         }), 429
 
     # Queue depth check (per-tier)
-    queue_limit = FREE_QUEUE_LIMIT if user["tier"] == "free" else PRO_QUEUE_LIMIT
+    queue_limit = FREE_QUEUE_LIMIT if effective_tier == "free" else PRO_QUEUE_LIMIT
     active = _count_active_jobs(user["user_id"])
     if active >= queue_limit:
         return jsonify({
@@ -404,13 +409,14 @@ def get_job(job_id: str):
 @login_required
 def list_jobs():
     user = get_current_user()
+    effective_tier = get_effective_tier(user["user_id"], fallback_tier=user.get("tier", "free"))
     limit_raw = request.args.get("limit", "50")
     try:
         limit = max(1, min(int(limit_raw), 250))
     except ValueError:
         limit = 50
     # Free users get capped history
-    if user["tier"] == "free":
+    if effective_tier == "free":
         limit = min(limit, FREE_HISTORY_LIMIT)
     return jsonify({"jobs": _list_jobs(user["user_id"], limit)})
 
@@ -420,7 +426,30 @@ def list_jobs():
 def get_quota_route():
     from auth import get_quota
     user = get_current_user()
-    return jsonify(get_quota(user["user_id"], user["tier"]))
+    effective_tier = get_effective_tier(user["user_id"], fallback_tier=user.get("tier", "free"))
+    return jsonify(get_quota(user["user_id"], effective_tier))
+
+
+@app.get("/api/billing/status")
+@login_required
+def billing_status():
+    user = get_current_user()
+    sync_subscription_from_stripe(user["user_id"])
+    plan = get_plan_snapshot(user["user_id"], fallback_tier=user.get("tier", "free"))
+    return jsonify({"plan": plan})
+
+
+@app.post("/api/billing/create-checkout-session")
+@login_required
+def create_checkout_session_route():
+    user = get_current_user()
+    try:
+        payload = create_checkout_session(user)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
+    except Exception:
+        return jsonify({"error": "Unable to create Stripe checkout session right now."}), 502
+    return jsonify(payload)
 
 
 if __name__ == "__main__":

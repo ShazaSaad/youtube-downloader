@@ -142,7 +142,7 @@ function QuotaBar({ quota, tier }) {
 }
 
 // ── User menu ─────────────────────────────────────────────────────────────────
-function UserMenu({ user, onLogout }) {
+function UserMenu({ user, onLogout, onUpgrade, upgradeBusy }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -174,6 +174,16 @@ function UserMenu({ user, onLogout }) {
           <button className="user-dropdown-item" onClick={onLogout} type="button">
             <IconLogout /> Sign out
           </button>
+          {user.tier === 'free' && (
+            <button className="user-dropdown-item" onClick={onUpgrade} type="button" disabled={upgradeBusy}>
+              {upgradeBusy ? 'Opening checkout...' : 'Upgrade to Pro'}
+            </button>
+          )}
+          {user.plan?.status === 'trialing' && user.plan?.trial_end && (
+            <div className="user-dropdown-note">
+              Trial ends {new Date(user.plan.trial_end).toLocaleDateString()}.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -208,6 +218,7 @@ function App() {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState('');
   const [ytDlpVersion, setYtDlpVersion] = useState('unknown');
+  const [upgradeBusy, setUpgradeBusy] = useState(false);
 
   const settingsRef = useRef(null);
   const previewAbortRef = useRef(null);
@@ -492,6 +503,27 @@ function App() {
     setHistory([]);
   };
 
+  const handleUpgrade = async () => {
+    setUpgradeBusy(true);
+    try {
+      const res = await fetch('/api/billing/create-checkout-session', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || 'Failed to start checkout');
+      if (payload.checkout_url) {
+        window.location.assign(payload.checkout_url);
+        return;
+      }
+      throw new Error('Missing checkout URL');
+    } catch (err) {
+      setError(err.message || 'Failed to start checkout');
+    } finally {
+      setUpgradeBusy(false);
+    }
+  };
+
   const toggleTheme = () => setTheme(c => c === 'light' ? 'dark' : 'light');
 
   // ── Render guards ─────────────────────────────────────────────────────────
@@ -539,7 +571,7 @@ function App() {
               )}
             </div>
             {/* User menu */}
-            {currentUser && <UserMenu user={currentUser} onLogout={handleLogout} />}
+            {currentUser && <UserMenu user={currentUser} onLogout={handleLogout} onUpgrade={handleUpgrade} upgradeBusy={upgradeBusy} />}
           </div>
         </div>
 
