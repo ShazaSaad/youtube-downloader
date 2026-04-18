@@ -230,16 +230,93 @@ h1 {
   background: var(--error-bg);
 }
 
-.log-box {
-  margin-top: 8px;
-  background: var(--log-bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  min-height: 140px;
-  max-height: 260px;
-  overflow: auto;
-  padding: 14px;
-  white-space: pre-wrap;
+.download-progress {
+  margin: 16px 0 8px;
+}
+
+.progress-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.progress-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.progress-percent {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+.progress-track {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress-track--waiting::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 35%, transparent),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: progress-wait 1.2s ease-in-out infinite;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover), var(--accent));
+  background-size: 200% 100%;
+  transition: width 0.45s cubic-bezier(0.33, 1, 0.68, 1);
+  animation: progress-shine 2s linear infinite;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.progress-meta strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+@keyframes progress-shine {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@keyframes progress-wait {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 @media (max-width: 720px) {

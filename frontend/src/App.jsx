@@ -37,6 +37,37 @@ function formatViews(viewCount) {
   return new Intl.NumberFormat().format(viewCount);
 }
 
+const ANSI_ESCAPE_RE = /\u001B\[[0-9;]*[A-Za-z]/g;
+const DOWNLOAD_PROGRESS_RE =
+  /Downloading\.\.\.\s*([\d.]+)\s*%?\s*\|\s*Speed:\s*([^|]*?)\s*\|\s*ETA:\s*(.+)$/i;
+
+function stripAnsi(value) {
+  return String(value ?? '').replace(ANSI_ESCAPE_RE, '');
+}
+
+function parseDownloadProgressFromLogs(logs) {
+  if (!Array.isArray(logs) || !logs.length) {
+    return null;
+  }
+  for (let i = logs.length - 1; i >= 0; i -= 1) {
+    const line = stripAnsi(logs[i]).trim();
+    const match = line.match(DOWNLOAD_PROGRESS_RE);
+    if (!match) {
+      continue;
+    }
+    const pct = Number.parseFloat(match[1]);
+    if (!Number.isFinite(pct)) {
+      continue;
+    }
+    return {
+      percent: Math.min(100, Math.max(0, pct)),
+      speed: match[2].trim() || null,
+      eta: match[3].trim() || null,
+    };
+  }
+  return null;
+}
+
 function App() {
   const [url, setUrl] = useState('');
   const [jobId, setJobId] = useState(null);
@@ -181,6 +212,47 @@ function App() {
     setTheme((current) => (current === 'light' ? 'dark' : 'light'));
   };
 
+  const parsedDownloadProgress = useMemo(() => parseDownloadProgressFromLogs(job?.logs), [job?.logs]);
+  const downloadProgress = useMemo(() => {
+    if (!job) {
+      return null;
+    }
+
+    if (job.status === 'success') {
+      return {
+        percent: 100,
+        speed: parsedDownloadProgress?.speed,
+        eta: '0s',
+      };
+    }
+
+    if (job.status === 'queued') {
+      return {
+        percent: 0,
+        speed: null,
+        eta: null,
+      };
+    }
+
+    return parsedDownloadProgress;
+  }, [job, parsedDownloadProgress]);
+
+  const showProgressBar = Boolean(job && ['queued', 'running', 'success'].includes(job.status));
+  const progressFallbackText = useMemo(() => {
+    if (!job) {
+      return { speed: 'N/A', eta: 'N/A' };
+    }
+
+    switch (job.status) {
+      case 'queued':
+        return { speed: 'Waiting...', eta: 'Waiting...' };
+      case 'running':
+        return { speed: 'Calculating...', eta: 'Calculating...' };
+      default:
+        return { speed: 'N/A', eta: 'N/A' };
+    }
+  }, [job]);
+
   return (
     <main className="page-shell">
       <section className="card">
@@ -278,8 +350,39 @@ function App() {
             ) : null}
             {job.error ? <div className="error-box">{job.error}</div> : null}
 
-            <h3>Activity</h3>
-            <pre className="log-box">{job.logs && job.logs.length ? job.logs.join('\n') : 'Waiting for activity...'}</pre>
+            {showProgressBar ? (
+              <div className="download-progress" aria-live="polite">
+                <div className="progress-header">
+                  <span className="progress-label">Download progress</span>
+                  <span className="progress-percent">
+                    {downloadProgress ? `${Math.round(downloadProgress.percent)}%` : '...'}
+                  </span>
+                </div>
+                <div
+                  className={`progress-track${downloadProgress ? '' : ' progress-track--waiting'}`}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={downloadProgress ? Math.round(downloadProgress.percent) : 0}
+                  aria-label="Download progress"
+                >
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${downloadProgress ? downloadProgress.percent : 0}%` }}
+                  />
+                </div>
+                <div className="progress-meta">
+                  <span>
+                    Speed:{' '}
+                    <strong>{downloadProgress?.speed ?? progressFallbackText.speed}</strong>
+                  </span>
+                  <span>
+                    ETA:{' '}
+                    <strong>{downloadProgress?.eta ?? progressFallbackText.eta}</strong>
+                  </span>
+                </div>
+              </div>
+            ) : null}
           </section>
         ) : null}
       </section>
