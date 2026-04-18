@@ -111,7 +111,7 @@ function App() {
             successful.map((job) => ({
               id: job.job_id,
               title: job.result?.title || job.url,
-              thumbnail: null,
+              thumbnail: job.result?.thumbnail || null,
               format: FORMAT_OPTIONS.find((x) => x.value === job.quality)?.label || job.quality,
               savedAt: job.updated_at,
               filePath: job.result.file_path,
@@ -272,7 +272,7 @@ function App() {
         {
           id: item.jobId,
           title: item.result.title || item.url,
-          thumbnail: item.thumbnail || null,
+          thumbnail: item.result?.thumbnail || item.thumbnail || null,
           format: FORMAT_OPTIONS.find((x) => x.value === item.quality)?.label || item.quality,
           savedAt: new Date().toISOString(),
           filePath: item.result.file_path,
@@ -510,7 +510,7 @@ function App() {
                     <span>Speed: {item.speed}</span>
                     <span>ETA: {item.eta}</span>
                   </div>
-                  {item.result?.file_path ? <p className="history-path">Saved: {item.result.file_path}</p> : null}
+                  {item.result?.file_path ? <p className="history-path">Done!</p> : null}
                   {item.error ? <p className="queue-error">{item.error}</p> : null}
                 </article>
               ))}
@@ -535,7 +535,6 @@ function App() {
                       <h4>{entry.title}</h4>
                       <p>{entry.format}</p>
                       <p>{formatDate(entry.savedAt)}</p>
-                      <p className="history-path">{entry.filePath}</p>
                     </div>
                   </article>
                 ))

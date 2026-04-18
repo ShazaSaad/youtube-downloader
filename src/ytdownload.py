@@ -167,6 +167,7 @@ def download_video(
         result = {
             "title": info.get("title", "Unknown title"),
             "file_path": str(Path(file_path).resolve()),
+            "thumbnail": info.get("thumbnail"),
         }
         if playlist_mode and info.get("_type") == "playlist":
             entries = [entry for entry in (info.get("entries") or []) if entry]
