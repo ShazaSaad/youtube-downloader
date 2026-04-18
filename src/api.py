@@ -5,7 +5,7 @@ from uuid import uuid4
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from ytdownload import download_video, get_video_preview
+from ytdownload import DEFAULT_QUALITY, FORMAT_PRESETS, download_video, get_video_preview
 
 app = Flask(__name__)
 CORS(app)
@@ -27,13 +27,17 @@ def _append_log(job_id: str, message: str):
         job["updated_at"] = _now_iso()
 
 
-def _run_download(job_id: str, url: str):
+def _run_download(job_id: str, url: str, quality: str):
     with jobs_lock:
         jobs[job_id]["status"] = "running"
         jobs[job_id]["updated_at"] = _now_iso()
 
     try:
-        result = download_video(url, progress_callback=lambda msg: _append_log(job_id, msg))
+        result = download_video(
+            url,
+            progress_callback=lambda msg: _append_log(job_id, msg),
+            quality=quality,
+        )
         with jobs_lock:
             jobs[job_id]["status"] = "success"
             jobs[job_id]["result"] = result
@@ -70,14 +74,19 @@ def preview_video():
 def create_download_job():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
+    quality = (data.get("quality") or DEFAULT_QUALITY).strip()
 
     if not url:
         return jsonify({"error": "The 'url' field is required."}), 400
+
+    if quality not in FORMAT_PRESETS:
+        return jsonify({"error": "Invalid quality preset."}), 400
 
     job_id = str(uuid4())
     new_job = {
         "job_id": job_id,
         "url": url,
+        "quality": quality,
         "status": "queued",
         "logs": [],
         "result": None,
@@ -89,7 +98,7 @@ def create_download_job():
     with jobs_lock:
         jobs[job_id] = new_job
 
-    Thread(target=_run_download, args=(job_id, url), daemon=True).start()
+    Thread(target=_run_download, args=(job_id, url, quality), daemon=True).start()
 
     return jsonify({"job_id": job_id, "status": "queued"}), 202
 

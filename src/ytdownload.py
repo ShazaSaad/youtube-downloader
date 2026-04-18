@@ -1,9 +1,41 @@
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 import yt_dlp
 
 ProgressCallback = Optional[Callable[[str], None]]
+
+# Keys must match API / frontend `quality` values.
+FORMAT_PRESETS: Dict[str, Dict[str, Any]] = {
+    "best_mp4": {
+        "format": "bestvideo+bestaudio/best",
+        "merge_output_format": "mp4",
+    },
+    "1080": {
+        "format": "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+        "merge_output_format": "mp4",
+    },
+    "720": {
+        "format": "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+        "merge_output_format": "mp4",
+    },
+    "480": {
+        "format": "bestvideo[height<=480]+bestaudio/best[height<=480]/best",
+        "merge_output_format": "mp4",
+    },
+    "audio_mp3": {
+        "format": "bestaudio/best",
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
+    },
+}
+
+DEFAULT_QUALITY = "best_mp4"
 
 
 def get_video_preview(url: str):
@@ -32,9 +64,18 @@ def get_video_preview(url: str):
     except Exception as exc:
         raise RuntimeError(f"Preview failed: {exc}") from exc
 
-def download_video(url: str, output_path: str = "downloads", progress_callback: ProgressCallback = None):
+def download_video(
+    url: str,
+    output_path: str = "downloads",
+    progress_callback: ProgressCallback = None,
+    quality: str = DEFAULT_QUALITY,
+):
     if not url or not url.strip():
         raise ValueError("A valid YouTube URL is required.")
+
+    preset = FORMAT_PRESETS.get(quality)
+    if preset is None:
+        raise ValueError(f"Unknown quality preset: {quality!r}")
 
     output_dir = Path(output_path)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -51,14 +92,17 @@ def download_video(url: str, output_path: str = "downloads", progress_callback: 
             eta = data.get("_eta_str", "").strip()
             emit(f"Downloading... {percent} | Speed: {speed or 'N/A'} | ETA: {eta or 'N/A'}")
         elif status == "finished":
-            emit("Download finished. Merging audio and video...")
+            if quality == "audio_mp3":
+                emit("Download finished. Converting to MP3...")
+            else:
+                emit("Download finished. Merging audio and video...")
 
     ydl_opts = {
         "outtmpl": str(output_dir / "%(title)s.%(ext)s"),
-        "format": "bestvideo+bestaudio/best",
         "ffmpeg_location": r"ffmpeg",
         "progress_hooks": [progress_hook],
         "noplaylist": True,
+        **preset,
     }
 
     emit("Starting download...")
@@ -67,7 +111,9 @@ def download_video(url: str, output_path: str = "downloads", progress_callback: 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
-            if info.get("requested_downloads"):
+            if info.get("filepath"):
+                file_path = info["filepath"]
+            elif info.get("requested_downloads"):
                 candidate = info["requested_downloads"][0].get("filepath")
                 if candidate:
                     file_path = candidate

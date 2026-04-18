@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 const POLL_MS = 1500;
 
+const FORMAT_OPTIONS = [
+  { value: 'best_mp4', label: 'Best Quality (MP4)' },
+  { value: '1080', label: '1080p' },
+  { value: '720', label: '720p' },
+  { value: '480', label: '480p' },
+  { value: 'audio_mp3', label: 'Audio Only (MP3)' },
+];
+
 function formatDuration(totalSeconds) {
   if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) {
     return 'Unknown';
@@ -38,6 +46,7 @@ function App() {
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState('');
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [formatQuality, setFormatQuality] = useState('best_mp4');
   const previewRequestRef = useRef(null);
 
   useEffect(() => {
@@ -153,7 +162,7 @@ function App() {
       const response = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, quality: formatQuality }),
       });
       const payload = await response.json();
 
@@ -183,7 +192,7 @@ function App() {
         </div>
 
         <p className="subtitle">
-          Paste a YouTube URL, preview the video details, then download the best available quality.
+          Paste a YouTube URL, preview the video details, pick format and quality, then download.
         </p>
 
         <form onSubmit={handleSubmit} className="download-form">
@@ -196,6 +205,18 @@ function App() {
             placeholder="https://www.youtube.com/watch?v=..."
             required
           />
+          <label htmlFor="format-quality">Format &amp; quality</label>
+          <select
+            id="format-quality"
+            value={formatQuality}
+            onChange={(event) => setFormatQuality(event.target.value)}
+          >
+            {FORMAT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
           <div className="form-actions">
             <button
               className="secondary-button"
@@ -239,6 +260,12 @@ function App() {
         {job ? (
           <section className="status-panel">
             <h2>Status: {job.status}</h2>
+            {job.quality ? (
+              <p className="job-quality">
+                <strong>Format:</strong>{' '}
+                {FORMAT_OPTIONS.find((o) => o.value === job.quality)?.label ?? job.quality}
+              </p>
+            ) : null}
             {job.result ? (
               <div className="success-box">
                 <p>

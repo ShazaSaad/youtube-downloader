@@ -89,7 +89,8 @@ h1 {
   font-weight: 600;
 }
 
-.download-form input {
+.download-form input,
+.download-form select {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -98,7 +99,13 @@ h1 {
   color: var(--text);
 }
 
-.download-form input:focus {
+.download-form select {
+  cursor: pointer;
+  appearance: auto;
+}
+
+.download-form input:focus,
+.download-form select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px #ff003326;
@@ -146,6 +153,12 @@ h1 {
   margin-top: 24px;
   border-top: 1px solid var(--border);
   padding-top: 18px;
+}
+
+.job-quality {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.95rem;
 }
 
 .preview-panel {
