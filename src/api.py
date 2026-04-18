@@ -5,7 +5,7 @@ from uuid import uuid4
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-from ytdownload import DEFAULT_QUALITY, FORMAT_PRESETS, download_video, get_video_preview
+from ytdownload import DEFAULT_OUTPUT_DIR, DEFAULT_QUALITY, FORMAT_PRESETS, download_video, get_video_preview
 
 app = Flask(__name__)
 CORS(app)
@@ -92,7 +92,7 @@ def create_download_job():
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()
     quality = (data.get("quality") or DEFAULT_QUALITY).strip()
-    output_path = (data.get("output_path") or "downloads").strip()
+    output_path = (data.get("output_path") or "").strip()
     playlist_mode = bool(data.get("playlist_mode"))
     playlist_items = data.get("playlist_items") or []
     download_subtitles = bool(data.get("download_subtitles"))
@@ -104,15 +104,12 @@ def create_download_job():
 
     if quality not in FORMAT_PRESETS:
         return jsonify({"error": "Invalid quality preset."}), 400
-    if not output_path:
-        return jsonify({"error": "Output path is required."}), 400
-
     job_id = str(uuid4())
     new_job = {
         "job_id": job_id,
         "url": url,
         "quality": quality,
-        "output_path": output_path,
+        "output_path": output_path or str(DEFAULT_OUTPUT_DIR),
         "playlist_mode": playlist_mode,
         "playlist_items": playlist_items,
         "download_subtitles": download_subtitles,
