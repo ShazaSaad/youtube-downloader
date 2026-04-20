@@ -1,3 +1,4 @@
+// FIX #1: LoginPage is its own file only — the duplicate in App.jsx is removed.
 export default function LoginPage({ authError }) {
   return (
     <main className="login-shell">
@@ -5,18 +6,15 @@ export default function LoginPage({ authError }) {
         <div className="login-logo">
           <span className="login-logo-icon">▶</span>
         </div>
-
         <h1 className="login-title">YouTube Downloader</h1>
         <p className="login-subtitle">
           Sign in to download videos, track your history, and manage your queue.
         </p>
-
-        {authError ? (
+        {authError && (
           <div className="login-error">
             Sign-in failed: {authError.replace(/_/g, ' ')}. Please try again.
           </div>
-        ) : null}
-
+        )}
         <a href="/auth/google" className="google-btn">
           <svg className="google-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -26,9 +24,8 @@ export default function LoginPage({ authError }) {
           </svg>
           Sign in with Google
         </a>
-
         <p className="login-fine-print">
-          Free accounts get 5 downloads/day. Upgrade to Pro for unlimited access.
+          Free accounts get 5 downloads/day · Upgrade to Pro for unlimited access
         </p>
       </div>
     </main>

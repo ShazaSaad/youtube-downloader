@@ -1,9 +1,13 @@
-
 __pycache__/
-*.py[cod]
+*.pyc
+*.pyo
 .venv/
 venv/
 .env
+src/jobs.db
 downloads/
-frontend/node_modules/
+node_modules/
 frontend/dist/
+frontend/.vite/
+.DS_Store
+Thumbs.db

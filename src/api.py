@@ -2,7 +2,7 @@ import json
 import os
 import sqlite3
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock, Semaphore, Thread
 from uuid import uuid4
@@ -19,15 +19,14 @@ from auth import (
     FREE_QUEUE_LIMIT,
     PRO_QUEUE_LIMIT,
     check_quota,
-    create_checkout_session,
     get_effective_tier,
     get_current_user,
     get_plan_snapshot,
     increment_quota,
     init_auth_db,
     login_required,
-    sync_subscription_from_stripe,
 )
+
 from ytdownload import DEFAULT_OUTPUT_DIR, DEFAULT_QUALITY, FORMAT_PRESETS, download_video, get_video_preview
 
 app = Flask(__name__)
@@ -434,23 +433,39 @@ def get_quota_route():
 @login_required
 def billing_status():
     user = get_current_user()
-    sync_subscription_from_stripe(user["user_id"])
     plan = get_plan_snapshot(user["user_id"], fallback_tier=user.get("tier", "free"))
     return jsonify({"plan": plan})
 
-
-@app.post("/api/billing/create-checkout-session")
+@app.post("/api/billing/upgrade")
 @login_required
-def create_checkout_session_route():
+def upgrade_demo():
+    from auth import _upsert_subscription  # local import to avoid circular issues
     user = get_current_user()
-    try:
-        payload = create_checkout_session(user)
-    except RuntimeError as exc:
-        return jsonify({"error": str(exc)}), 503
-    except Exception:
-        return jsonify({"error": "Unable to create Stripe checkout session right now."}), 502
-    return jsonify(payload)
 
+    now = datetime.now(timezone.utc)
+
+    _upsert_subscription(user["user_id"], {
+        "provider": "demo",
+        "status": "active",
+        "trial_end": (now + timedelta(days=7)).isoformat(),
+        "current_period_end": (now + timedelta(days=30)).isoformat(),
+    })
+
+    return jsonify({"message": "Upgraded to Pro (demo mode)"})
+
+@app.post("/api/billing/downgrade")
+@login_required
+def downgrade_demo():
+    from auth import _upsert_subscription
+    user = get_current_user()
+
+    _upsert_subscription(user["user_id"], {
+        "status": "canceled",
+        "trial_end": None,
+        "current_period_end": None,
+    })
+
+    return jsonify({"message": "Downgraded to Free"})
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
