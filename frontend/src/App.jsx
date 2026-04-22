@@ -112,26 +112,10 @@ const IconLogout = () => (
 );
 
 // ── Quota bar ─────────────────────────────────────────────────────────────────
-function QuotaBar({ quota, tier }) {
-  if (tier === 'pro' || !quota) return null;
-  const { used, limit } = quota;
-  const pct = Math.min(100, Math.round((used / limit) * 100));
-  return (
-    <div className="quota-bar-wrap">
-      <div className="quota-bar-label">
-        <span>{used} / {limit} downloads today</span>
-        {used >= limit - 1 && used < limit && <span className="quota-warn">Almost at limit</span>}
-        {used >= limit && <span className="quota-exhausted">Limit reached — upgrade to Pro</span>}
-      </div>
-      <div className="quota-track">
-        <div className={`quota-fill${used >= limit ? ' quota-fill--full' : ''}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
+// Quota bar removed - all users have unlimited downloads
 
 // ── User menu ─────────────────────────────────────────────────────────────────
-function UserMenu({ user, onLogout, onUpgrade, upgradeBusy }) {
+function UserMenu({ user, onLogout }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -153,21 +137,8 @@ function UserMenu({ user, onLogout, onUpgrade, upgradeBusy }) {
           <div className="user-dropdown-header">
             <strong>{user.name}</strong>
             <span className="user-email">{user.email}</span>
-            <span className={`tier-badge tier-badge-${user.tier}`}>
-              {user.tier === 'pro' ? '⭐ Pro' : 'Free'}
-            </span>
           </div>
           <hr className="user-dropdown-divider" />
-          {user.tier === 'free' && (
-            <button className="user-dropdown-item upgrade-item" onClick={onUpgrade} type="button" disabled={upgradeBusy}>
-              {upgradeBusy ? 'Opening checkout...' : '⭐ Upgrade to Pro'}
-            </button>
-          )}
-          {user.plan?.status === 'trialing' && user.plan?.trial_end && (
-            <div className="user-dropdown-note">
-              Trial ends {new Date(user.plan.trial_end).toLocaleDateString()}.
-            </div>
-          )}
           <button className="user-dropdown-item" onClick={onLogout} type="button">
             <IconLogout /> Sign out
           </button>
@@ -205,7 +176,6 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState('');
   const [ytDlpVersion, setYtDlpVersion] = useState('unknown');
-  const [upgradeBusy, setUpgradeBusy] = useState(false);
   const [mobile, setMobile] = useState(isMobile);
 
   const settingsRef = useRef(null);
@@ -433,33 +403,7 @@ export default function App() {
     setAuthState('unauthenticated'); setCurrentUser(null); setQueue([]); setHistory([]);
   };
 
-  const handleUpgrade = async () => {
-    setUpgradeBusy(true);
-    try {
-      const res = await apiFetch("/api/billing/upgrade", {
-        method: "POST"
-      });
-      const p = await res.json();
-
-      if (!res.ok) throw new Error(p.error || 'Upgrade failed');
-
-      // ✅ Just refresh user data (no redirect needed)
-      const me = await fetch('/auth/me', { credentials: 'include' });
-      if (me.ok) {
-        const user = await me.json();
-        setCurrentUser(user);
-      }
-
-      setToast("Upgraded to Pro 🚀");
-    } catch (err) {
-      setError(err.message || 'Upgrade failed');
-    } finally {
-      setUpgradeBusy(false);
-    }
-  };
-
   const toggleTheme = () => setTheme(c => c === 'light' ? 'dark' : 'light');
-  const quotaExhausted = currentUser?.tier === 'free' && currentUser?.quota?.used >= currentUser?.quota?.limit;
 
   // ── Render guards ───────────────────────────────────────────────────────────
   if (authState === 'loading') {
@@ -499,12 +443,11 @@ export default function App() {
                 </section>
               )}
             </div>
-            {currentUser && <UserMenu user={currentUser} onLogout={handleLogout} onUpgrade={handleUpgrade} upgradeBusy={upgradeBusy} />}
+            {currentUser && <UserMenu user={currentUser} onLogout={handleLogout} />}
           </div>
         </div>
 
         <p className="subtitle">Automatic preview, persistent history, smart queue, and creator-friendly options.</p>
-        <QuotaBar quota={currentUser?.quota} tier={currentUser?.tier} />
 
         {/* Form */}
         <form className="download-form" onSubmit={enqueueDownloads}>
@@ -573,9 +516,8 @@ export default function App() {
                 {isPreviewLoading ? 'Loading...' : 'Refresh preview'}
               </button>
             )}
-            <button type="submit" disabled={quotaExhausted}
-              className={mobile ? 'submit-btn-full' : ''}>
-              {quotaExhausted ? 'Daily limit reached' : 'Add to Download Queue'}
+            <button type="submit" className={mobile ? 'submit-btn-full' : ''}>
+              Add to Download Queue
             </button>
           </div>
         </form>

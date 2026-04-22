@@ -4,4 +4,3 @@ yt-dlp
 requests
 PyJWT
 python-dotenv
-stripe

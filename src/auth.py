@@ -139,7 +139,7 @@ def _upsert_user(google_id: str, email: str, name: str, avatar_url: str) -> dict
                 conn.execute(
                     """INSERT INTO users
                        (user_id, google_id, email, name, avatar_url, tier, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, 'free', ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, 'pro', ?, ?)""",
                     (user_id, google_id, email, name, avatar_url, now, now),
                 )
 
@@ -236,30 +236,19 @@ def _upsert_subscription(user_id: str, patch: dict):
             ))
 
 def get_effective_tier(user_id: str, fallback_tier: str = "free") -> str:
-    sub = get_subscription(user_id)
-    status = (sub.get("status") or "").lower()
-
-    if status in PRO_STATUSES:
-        return "pro"
-
-    trial_end = _parse_iso(sub.get("trial_end"))
-    if trial_end and trial_end > datetime.now(timezone.utc):
-        return "pro"
-
-    return "free"
+    # All users now have pro tier - no subscription system
+    return "pro"
 
 
 def get_plan_snapshot(user_id: str, fallback_tier: str = "free") -> dict:
-    sub = get_subscription(user_id)
-    tier = get_effective_tier(user_id, fallback_tier)
-
+    # All users have pro tier - no subscription needed
     return {
-        "tier": tier,
-        "status": sub.get("status") or ("active" if tier == "pro" else "free"),
-        "provider": "demo",  # 🚀 always demo now
-        "trial_end": sub.get("trial_end"),
-        "current_period_end": sub.get("current_period_end"),
-        "cancel_at_period_end": bool(sub.get("cancel_at_period_end") or 0),
+        "tier": "pro",
+        "status": "active",
+        "provider": "none",
+        "trial_end": None,
+        "current_period_end": None,
+        "cancel_at_period_end": False,
     }
 
 # ── Quota helpers ─────────────────────────────────────────────────────────────
@@ -269,8 +258,7 @@ def _today_utc() -> str:
 
 
 def get_quota(user_id: str, effective_tier: str) -> dict:
-    """Return today's usage. effective_tier must come from get_effective_tier() (#6)."""
-    limit = FREE_DAILY_DOWNLOAD_LIMIT if effective_tier == "free" else None
+    """Return today's usage. All users have unlimited downloads."""
     today = _today_utc()
     with db_lock:
         with connect_db() as conn:
@@ -279,7 +267,7 @@ def get_quota(user_id: str, effective_tier: str) -> dict:
                 (user_id, today),
             ).fetchone()
     used = row["count"] if row else 0
-    return {"used": used, "limit": limit, "date": today}
+    return {"used": used, "limit": None, "date": today}
 
 
 def increment_quota(user_id: str) -> int:
@@ -300,10 +288,8 @@ def increment_quota(user_id: str) -> int:
 
 
 def check_quota(user_id: str, effective_tier: str) -> bool:
-    """FIX #6: accepts effective_tier (result of get_effective_tier), not raw DB tier."""
-    if effective_tier == "pro":
-        return True
-    return get_quota(user_id, effective_tier)["used"] < FREE_DAILY_DOWNLOAD_LIMIT
+    """All users have unlimited downloads - always return True."""
+    return True
 
 
 # ── JWT helpers ───────────────────────────────────────────────────────────────
@@ -438,59 +424,25 @@ def me():
         "email": user["email"],
         "name": user["name"],
         "avatar_url": user["avatar_url"],
-        "tier": plan["tier"],
-        "plan": plan,
-        "quota": quota,
-        "limits": {
-            "daily_downloads": FREE_DAILY_DOWNLOAD_LIMIT if plan["tier"] == "free" else None,
-            "history": FREE_HISTORY_LIMIT if plan["tier"] == "free" else None,
-            "queue": FREE_QUEUE_LIMIT if plan["tier"] == "free" else PRO_QUEUE_LIMIT,
-        },
     })
 
 @auth_bp.post("/dev/subscribe")
 @login_required
 def dev_subscribe():
-    user = get_current_user()
-    now = datetime.now(timezone.utc)
-
-    _upsert_subscription(user["user_id"], {
-        "provider": "demo",
-        "status": "active",
-        "trial_end": (now + timedelta(days=TRIAL_DAYS)).isoformat(),
-        "current_period_end": (now + timedelta(days=30)).isoformat(),
-    })
-
-    return jsonify({"message": "Pro activated (demo)"})
+    # Dev endpoint disabled - all users already have pro privileges
+    return jsonify({"message": "Already on Pro plan"})
 
 @auth_bp.post("/dev/cancel")
 @login_required
 def dev_cancel():
-    user = get_current_user()
-    now = datetime.now(timezone.utc)
-
-    _upsert_subscription(user["user_id"], {
-        "status": "canceled",
-        "cancel_at_period_end": 1,
-        "last_synced_at": now.isoformat(),
-    })
-
-    return jsonify({"message": "Subscription canceled (demo mode)"})
+    # Dev endpoint disabled - all users must remain on pro plan
+    return jsonify({"message": "Cannot cancel - all users have Pro privileges"})
 
 @auth_bp.post("/dev/downgrade")
 @login_required
 def dev_downgrade():
-    user = get_current_user()
-    now = datetime.now(timezone.utc)
-
-    _upsert_subscription(user["user_id"], {
-        "status": "canceled",
-        "trial_end": None,
-        "current_period_end": None,
-        "last_synced_at": now.isoformat(),
-    })
-
-    return jsonify({"message": "Downgraded to Free"})
+    # Dev endpoint disabled - all users must remain on pro plan
+    return jsonify({"message": "Cannot downgrade - all users have Pro privileges"})
 
 @auth_bp.post("/logout")
 def logout():

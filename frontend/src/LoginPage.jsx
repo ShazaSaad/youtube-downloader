@@ -25,7 +25,7 @@ export default function LoginPage({ authError }) {
           Sign in with Google
         </a>
         <p className="login-fine-print">
-          Free accounts get 5 downloads/day · Upgrade to Pro for unlimited access
+          download videos for personal use only. Respect copyright and YouTube's terms of service.
         </p>
       </div>
     </main>

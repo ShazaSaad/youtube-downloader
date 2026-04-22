@@ -15,15 +15,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from auth import (
     auth_bp,
-    FREE_HISTORY_LIMIT,
-    FREE_QUEUE_LIMIT,
-    PRO_QUEUE_LIMIT,
-    check_quota,
-    get_effective_tier,
     get_current_user,
-    get_plan_snapshot,
-    increment_quota,
-    init_auth_db,
     login_required,
 )
 
@@ -288,9 +280,6 @@ def _run_download(job_id, url, quality, output_path, playlist_mode,
                 subtitle_languages=subtitle_languages, save_thumbnail_only=save_thumbnail_only,
             )
             _set_status(job_id, "success", result=result)
-            # Only increment quota on success so failed attempts don't count
-            if user_id:
-                increment_quota(user_id)
         except Exception as exc:
             friendly = _sanitize_error(exc)
             _set_status(job_id, "error", error=friendly)
@@ -299,7 +288,6 @@ def _run_download(job_id, url, quality, output_path, playlist_mode,
 
 def _initialize_runtime_state():
     _init_db()
-    init_auth_db()
     _auto_update_ytdlp_if_enabled()
     YtDlpState.version = _determine_ytdlp_version()
 
@@ -342,7 +330,6 @@ def preview_video():
 @login_required
 def create_download_job():
     user = get_current_user()
-    effective_tier = get_effective_tier(user["user_id"], fallback_tier=user.get("tier", "free"))
     data = request.get_json(silent=True) or {}
     url              = (data.get("url") or "").strip()
     quality          = (data.get("quality") or DEFAULT_QUALITY).strip()
@@ -357,21 +344,6 @@ def create_download_job():
         return jsonify({"error": "The 'url' field is required."}), 400
     if quality not in FORMAT_PRESETS:
         return jsonify({"error": "Invalid quality preset."}), 400
-
-    # Quota check
-    if not check_quota(user["user_id"], effective_tier):
-        from auth import FREE_DAILY_DOWNLOAD_LIMIT
-        return jsonify({
-            "error": f"Daily download limit reached ({FREE_DAILY_DOWNLOAD_LIMIT} downloads/day on the free plan). Upgrade to Pro for unlimited downloads."
-        }), 429
-
-    # Queue depth check (per-tier)
-    queue_limit = FREE_QUEUE_LIMIT if effective_tier == "free" else PRO_QUEUE_LIMIT
-    active = _count_active_jobs(user["user_id"])
-    if active >= queue_limit:
-        return jsonify({
-            "error": f"You already have {active} active job(s). Your plan allows {queue_limit} concurrent jobs."
-        }), 429
 
     resolved_output = output_path or str(DEFAULT_OUTPUT_DIR)
     job_id = str(uuid4())
@@ -408,64 +380,40 @@ def get_job(job_id: str):
 @login_required
 def list_jobs():
     user = get_current_user()
-    effective_tier = get_effective_tier(user["user_id"], fallback_tier=user.get("tier", "free"))
     limit_raw = request.args.get("limit", "50")
     try:
         limit = max(1, min(int(limit_raw), 250))
     except ValueError:
         limit = 50
-    # Free users get capped history
-    if effective_tier == "free":
-        limit = min(limit, FREE_HISTORY_LIMIT)
     return jsonify({"jobs": _list_jobs(user["user_id"], limit)})
 
 
 @app.get("/api/quota")
 @login_required
 def get_quota_route():
-    from auth import get_quota
+    # Quota endpoint - returns unlimited for all users
     user = get_current_user()
-    effective_tier = get_effective_tier(user["user_id"], fallback_tier=user.get("tier", "free"))
-    return jsonify(get_quota(user["user_id"], effective_tier))
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return jsonify({"used": 0, "limit": None, "date": today})
 
 
 @app.get("/api/billing/status")
 @login_required
 def billing_status():
-    user = get_current_user()
-    plan = get_plan_snapshot(user["user_id"], fallback_tier=user.get("tier", "free"))
-    return jsonify({"plan": plan})
+    # Billing status endpoint removed - no subscription system
+    return jsonify({"status": "N/A"}), 200
 
 @app.post("/api/billing/upgrade")
 @login_required
 def upgrade_demo():
-    from auth import _upsert_subscription  # local import to avoid circular issues
-    user = get_current_user()
-
-    now = datetime.now(timezone.utc)
-
-    _upsert_subscription(user["user_id"], {
-        "provider": "demo",
-        "status": "active",
-        "trial_end": (now + timedelta(days=7)).isoformat(),
-        "current_period_end": (now + timedelta(days=30)).isoformat(),
-    })
-
-    return jsonify({"message": "Upgraded to Pro (demo mode)"})
+    # Upgrade endpoint removed - no subscription system
+    return jsonify({"error": "Billing system disabled"}), 410
 
 @app.post("/api/billing/downgrade")
 @login_required
 def downgrade_demo():
-    from auth import _upsert_subscription
-    user = get_current_user()
-
-    _upsert_subscription(user["user_id"], {
-        "status": "canceled",
-        "trial_end": None,
-        "current_period_end": None,
-    })
-
-    return jsonify({"message": "Downgraded to Free"})
+    # Downgrade endpoint removed - no subscription system
+    return jsonify({"error": "Billing system disabled"}), 410
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
