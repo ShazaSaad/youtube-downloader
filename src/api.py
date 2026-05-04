@@ -288,7 +288,9 @@ def _run_download(job_id, url, quality, output_path, playlist_mode,
 
 
 def _initialize_runtime_state():
+    Path(os.getenv("ALLOWED_OUTPUT_BASE", str(DEFAULT_OUTPUT_DIR))).mkdir(parents=True, exist_ok=True)
     _init_db()
+    init_auth_db()
     _auto_update_ytdlp_if_enabled()
     YtDlpState.version = _determine_ytdlp_version()
 
@@ -416,12 +418,6 @@ def downgrade_demo():
     # Downgrade endpoint removed - no subscription system
     return jsonify({"error": "Billing system disabled"}), 410
 
-def _initialize_runtime_state():
-    Path(os.getenv("ALLOWED_OUTPUT_BASE", str(DEFAULT_OUTPUT_DIR))).mkdir(parents=True, exist_ok=True)
-    _init_db()
-    init_auth_db()
-    _auto_update_ytdlp_if_enabled()
-    YtDlpState.version = _determine_ytdlp_version()
     
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
