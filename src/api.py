@@ -24,7 +24,13 @@ from ytdownload import DEFAULT_OUTPUT_DIR, DEFAULT_QUALITY, FORMAT_PRESETS, down
 
 app = Flask(__name__)
 app.register_blueprint(auth_bp)
-CORS(app, supports_credentials=True, origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")])
+CORS(
+    app,
+    supports_credentials=True,
+    origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")],
+    expose_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-Requested-With"],
+)
 
 MAX_CONCURRENT_DOWNLOADS = int(os.getenv("MAX_CONCURRENT_DOWNLOADS", "3"))
 AUTO_UPDATE_YTDLP = os.getenv("YTDLP_AUTO_UPDATE", "false").strip().lower() in {"1", "true", "yes", "on"}

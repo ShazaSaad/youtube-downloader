@@ -413,10 +413,14 @@ def google_callback():
     token = _mint_token(user["user_id"])
     response = make_response(redirect(FRONTEND_ORIGIN))
     response.set_cookie(
-        COOKIE_NAME, token,
-        httponly=True, secure=False, samesite="Lax",
-        max_age=JWT_EXPIRY_DAYS * 86400, path="/",
-    )
+    COOKIE_NAME,
+    token,
+    httponly=True,
+    secure=True,        # required for SameSite=None
+    samesite="None",    # allows cross-site cookie
+    max_age=JWT_EXPIRY_DAYS * 86400,
+    path="/",
+)
     return response
 
 @auth_bp.get("/github")
@@ -479,10 +483,14 @@ def github_callback():
     token = _mint_token(user["user_id"])
     response = make_response(redirect(FRONTEND_ORIGIN))
     response.set_cookie(
-        COOKIE_NAME, token,
-        httponly=True, secure=False, samesite="Lax",
-        max_age=JWT_EXPIRY_DAYS * 86400, path="/",
-    )
+    COOKIE_NAME,
+    token,
+    httponly=True,
+    secure=True,        # required for SameSite=None
+    samesite="None",    # allows cross-site cookie
+    max_age=JWT_EXPIRY_DAYS * 86400,
+    path="/",
+)
     return response
 
 

@@ -1,6 +1,7 @@
 // FIX #1: removed duplicate export default / LoginPage body from bottom of this file.
 // FIX #7: all mutating fetch calls now include "X-Requested-With": "XMLHttpRequest".
 // FIX #13: queue polling stops automatically once a job reaches success/error.
+const API = import.meta.env.VITE_API_URL || '';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import LoginPage from './LoginPage';
 
@@ -205,7 +206,7 @@ export default function App() {
       setInputText(shared);
       window.history.replaceState({}, '', window.location.pathname);
     }
-    fetch('/auth/me', { credentials: 'include' })
+    fetch(`${API}/auth/me`, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data) { setCurrentUser(data); setAuthState('authenticated'); } else setAuthState('unauthenticated'); })
       .catch(() => setAuthState('unauthenticated'));
@@ -220,8 +221,8 @@ export default function App() {
     setClipboardMonitor(Boolean(safeRead(CLIPBOARD_MONITOR_KEY, false)));
 
     Promise.all([
-      fetch('/api/jobs?limit=100', { credentials: 'include' }),
-      fetch('/api/health'),
+      fetch(`${API}/api/jobs?limit=100`, { credentials: 'include' }),
+      fetch(`${API}/api/health`),
     ]).then(async ([jr, hr]) => {
       if (jr.ok) {
         const p = await jr.json();
@@ -287,7 +288,7 @@ export default function App() {
     previewAbortRef.current = ctrl;
     setIsPreviewLoading(true); setPreviewError('');
     try {
-      const res = await apiFetch('/api/preview', {
+      const res = await apiFetch(`${API}/api/preview`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, playlist_mode: playlistMode }), signal: ctrl.signal,
       });
@@ -320,7 +321,7 @@ export default function App() {
     const timer = setInterval(async () => {
       await Promise.all(active.map(async (item) => {
         try {
-          const res = await fetch(`/api/jobs/${item.jobId}`, { credentials: 'include' });
+          const res = await fetch(`${API}/api/jobs/${item.jobId}`, { credentials: 'include' });
           if (!res.ok) return;
           const p = await res.json();
           const prog = parseProgress(p.logs);
@@ -353,7 +354,7 @@ export default function App() {
       setQueue(prev => prev.map(x => x.localId === item.localId ? { ...x, recorded: true } : x));
     });
     if (didRecord) {
-      fetch('/auth/me', { credentials: 'include' }).then(r => r.ok ? r.json() : null)
+      fetch(`${API}/auth/me`, { credentials: 'include' }).then(r => r.ok ? r.json() : null)
         .then(d => { if (d) setCurrentUser(d); }).catch(() => { });
     }
   }, [queue]);
@@ -365,7 +366,7 @@ export default function App() {
     if (!urls.length) { setError('Add at least one valid YouTube URL.'); return; }
 
     const created = await Promise.all(urls.map(async (url, idx) => {
-      const res = await apiFetch('/api/download', {
+      const res = await apiFetch(`${API}/api/download`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url, quality: formatQuality,
@@ -399,7 +400,7 @@ export default function App() {
 
   const handleLogout = async () => {
     // Logout POSTs directly — exempt from CSRF helper (browser form-like)
-    await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+    await fetch(`${API}/auth/logout`, { method: 'POST', credentials: 'include' });
     setAuthState('unauthenticated'); setCurrentUser(null); setQueue([]); setHistory([]);
   };
 
