@@ -4,3 +4,4 @@ yt-dlp
 requests
 PyJWT
 python-dotenv
+gunicorn
