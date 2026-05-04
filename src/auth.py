@@ -36,7 +36,17 @@ GOOGLE_AUTH_URL     = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL    = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 
+GITHUB_CLIENT_ID     = os.getenv("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
+
+GITHUB_AUTH_URL      = "https://github.com/login/oauth/authorize"
+GITHUB_TOKEN_URL     = "https://github.com/login/oauth/access_token"
+GITHUB_USERINFO_URL  = "https://api.github.com/user"
+
+
 REDIRECT_URI    = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:5000/auth/google/callback")
+GITHUB_REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI", "http://localhost:5000/auth/github/callback")
+
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
 JWT_ALGORITHM   = "HS256"
@@ -408,6 +418,73 @@ def google_callback():
         max_age=JWT_EXPIRY_DAYS * 86400, path="/",
     )
     return response
+
+@auth_bp.get("/github")
+def github_login():
+    if not GITHUB_CLIENT_ID:
+        return jsonify({"error": "GITHUB_CLIENT_ID is not configured."}), 500
+    import urllib.parse
+    params = {
+        "client_id": GITHUB_CLIENT_ID,
+        "redirect_uri": GITHUB_REDIRECT_URI,
+        "scope": "read:user user:email",
+        "allow_signup": "true",
+    }
+    return redirect(GITHUB_AUTH_URL + "?" + urllib.parse.urlencode(params))
+
+@auth_bp.get("/github/callback")
+def github_callback():
+    error = request.args.get("error")
+    if error:
+        return redirect(f"{FRONTEND_ORIGIN}?auth_error={error}")
+
+    code = request.args.get("code")
+    if not code:
+        return redirect(f"{FRONTEND_ORIGIN}?auth_error=missing_code")
+
+    try:
+        token_resp = requests.post(
+            GITHUB_TOKEN_URL,
+            data={
+                "code": code, "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "redirect_uri": GITHUB_REDIRECT_URI,
+            },
+            headers={"Accept": "application/json"},
+            timeout=10,
+        )
+        token_resp.raise_for_status()
+        tokens = token_resp.json()
+    except Exception:
+        return redirect(f"{FRONTEND_ORIGIN}?auth_error=token_exchange_failed")
+
+    try:
+        userinfo_resp = requests.get(
+            GITHUB_USERINFO_URL,
+            headers={"Authorization": f"Bearer {tokens['access_token']}"},
+            timeout=10,
+        )
+        userinfo_resp.raise_for_status()
+        userinfo = userinfo_resp.json()
+    except Exception:
+        return redirect(f"{FRONTEND_ORIGIN}?auth_error=userinfo_failed")
+
+    user = _upsert_user(
+        google_id=str(userinfo["id"]),  # Use GitHub ID as google_id for simplicity
+        email=userinfo.get("email", ""),
+        name=userinfo.get("name") or userinfo.get("login", ""),
+        avatar_url=userinfo.get("avatar_url", ""),
+    )
+
+    token = _mint_token(user["user_id"])
+    response = make_response(redirect(FRONTEND_ORIGIN))
+    response.set_cookie(
+        COOKIE_NAME, token,
+        httponly=True, secure=False, samesite="Lax",
+        max_age=JWT_EXPIRY_DAYS * 86400, path="/",
+    )
+    return response
+
 
 
 @auth_bp.get("/me")
